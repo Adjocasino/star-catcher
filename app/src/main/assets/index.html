@@ -1022,10 +1022,10 @@ function drawVoiceMeter() {
 }
 
 // ---------- avatar sounds ----------
-function hasSound() { return ['cat', 'bottle', 'toilet', 'trouble'].includes(avatar().kind); }
+function hasSound() { return ['cat', 'bottle', 'toilet', 'trouble', 'seji'].includes(avatar().kind); }
 function avatarSound() {
   const k = avatar().kind;
-  if (k === 'cat') meow(); else if (k === 'bottle') sloshSound(); else if (k === 'toilet') fartSound(); else if (k === 'trouble') groanSound();
+  if (k === 'cat') meow(); else if (k === 'bottle') sloshSound(); else if (k === 'toilet') { fartSound(); poopFx(); } else if (k === 'trouble') groanSound(); else if (k === 'seji') keySound();
 }
 function noiseBuf() {
   if (!actx._noise) { const b = actx.createBuffer(1, actx.sampleRate, actx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; actx._noise = b; }
@@ -1075,6 +1075,70 @@ function groanSound() {
     }
     g.connect(actx.destination); o.start(t); vib.start(t); o.stop(t + dur); vib.stop(t + dur);
   } catch(e) {}
+}
+
+
+// 💩 particles + stink cloud for Toilet Guy
+function poopFx() {
+  if (!W) return;
+  const n = 5 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
+    const sp = 120 + Math.random() * 220;
+    fx.push({ poop: true, x: guy.x + (Math.random() - 0.5) * 16, y: guy.y + 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+      rot: Math.random() * 6, vr: (Math.random() - 0.5) * 10, s: 0.7 + Math.random() * 0.6, life: 0.9 + Math.random() * 0.4, emoji: Math.random() < 0.25 });
+  }
+  for (let i = 0; i < 4; i++) fx.push({ gas: true, x: guy.x - guy.facing * 14 + (Math.random() - 0.5) * 20, y: guy.y + 8, vx: (Math.random() - 0.5) * 30, vy: -20 - Math.random() * 30, r: 8 + Math.random() * 6, life: 0.8 + Math.random() * 0.3 });
+}
+function drawPoop(f) {
+  ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.scale(f.s, f.s);
+  ctx.globalAlpha = Math.min(1, f.life * 2);
+  if (f.emoji) { ctx.font = '22px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('💩', 0, 0); ctx.restore(); return; }
+  ctx.fillStyle = '#7a4a22'; ctx.strokeStyle = '#3d2410'; ctx.lineWidth = 1.5;
+  for (const [y, rx, ry] of [[4, 9, 4.5], [-1, 7, 4], [-5.5, 4.5, 3.2]]) { ctx.beginPath(); ctx.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(-1, -8); ctx.quadraticCurveTo(2, -12, 1, -9); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(-3, 2, 2.4, 1.2, -0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// ⌨️ random mechanical keyboard sounds for Seji: thocky, clicky, poppy
+function keySound() {
+  try {
+    if (!ensureAudio()) return;
+    const kinds = ['thock', 'click', 'pop'];
+    const kind = kinds[Math.floor(Math.random() * 3)];
+    const strokes = 1 + Math.floor(Math.random() * 3);          // a quick little typing burst
+    for (let i = 0; i < strokes; i++) keystroke(kind, actx.currentTime + i * (0.045 + Math.random() * 0.04));
+  } catch(e) {}
+}
+function keystroke(kind, t) {
+  const out = actx.createGain(); out.gain.value = 0.9; out.connect(actx.destination);
+  const burst = (len, type, freq, q, vol, at) => {
+    const n = actx.createBufferSource(); n.buffer = noiseBuf();
+    const fl = actx.createBiquadFilter(); fl.type = type; fl.frequency.value = freq; fl.Q.value = q;
+    const g = actx.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    n.connect(fl); fl.connect(g); g.connect(out); n.start(at, Math.random() * 0.8); n.stop(at + len + 0.01);
+  };
+  const tone = (f0, f1, len, vol, at, type = 'sine') => {
+    const o = actx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, at); o.frequency.exponentialRampToValueAtTime(f1, at + len);
+    const g = actx.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    o.connect(g); g.connect(out); o.start(at); o.stop(at + len + 0.01);
+  };
+  const v = 0.85 + Math.random() * 0.3;
+  if (kind === 'thock') {            // deep, muffled bottom-out
+    burst(0.05, 'lowpass', 700, 1.5, 0.9 * v, t);
+    tone(190 * v, 110, 0.07, 0.6, t);
+    burst(0.03, 'lowpass', 900, 1, 0.35, t + 0.06);   // upstroke
+  } else if (kind === 'click') {     // sharp blue-switch click + release
+    burst(0.012, 'highpass', 3800, 1, 0.9 * v, t);
+    tone(4200 * v, 3000, 0.01, 0.25, t, 'square');
+    burst(0.02, 'bandpass', 1800, 2, 0.35, t + 0.008);
+    burst(0.01, 'highpass', 4200, 1, 0.5, t + 0.05);
+  } else {                            // poppy / bubbly
+    burst(0.025, 'bandpass', 1300 * v, 6, 0.9, t);
+    tone(1500 * v, 650, 0.035, 0.5, t, 'triangle');
+    burst(0.02, 'bandpass', 1700, 5, 0.3, t + 0.055);
+  }
 }
 
 // ---------- shop ----------
@@ -1338,6 +1402,17 @@ function loop(now) {
   for (let i = fx.length - 1; i >= 0; i--) {
     const f = fx[i]; f.life -= dt;
     if (f.life <= 0) { fx.splice(i, 1); continue; }
+    if (f.poop) {
+      f.vy += 520 * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt;
+      if (f.y > GROUND - 4) { f.y = GROUND - 4; f.vy *= -0.35; f.vx *= 0.6; f.vr *= 0.5; }
+      drawPoop(f); continue;
+    }
+    if (f.gas) {
+      f.x += f.vx * dt; f.y += f.vy * dt; f.r += 22 * dt;
+      ctx.globalAlpha = Math.min(0.55, f.life * 0.7); ctx.fillStyle = '#9fcf5a';
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      continue;
+    }
     if (f.p) {
       f.vy += 300 * dt; f.x += f.vx * dt; f.y += f.vy * dt;
       ctx.globalAlpha = Math.min(1, f.life * 2); ctx.fillStyle = f.color;
