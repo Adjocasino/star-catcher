@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Flip Guy</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #ffe9c7; font-family: 'Fredoka', system-ui, sans-serif; color: #2b1d3a; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  #wrap { position: relative; width: 100%; height: 100%; max-width: 520px; margin: 0 auto; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; top: 14px; left: 0; right: 0; text-align: center; pointer-events: none; }
+  #score { font-size: 64px; font-weight: 700; line-height: 1; color: #fff; text-shadow: 0 4px 0 #e2703a, 0 8px 18px rgba(0,0,0,.15); }
+  #best { font-size: 16px; font-weight: 500; opacity: .7; margin-top: 4px; }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; background: rgba(255,233,199,.82); backdrop-filter: blur(2px); }
+  .screen.hidden { display: none; }
+  h1 { font-size: 52px; line-height: .95; color: #e2703a; text-shadow: 0 4px 0 #2b1d3a; }
+  h2 { font-size: 34px; color: #2b1d3a; }
+  p { font-size: 17px; max-width: 300px; line-height: 1.4; font-weight: 500; }
+  .big { font-size: 72px; font-weight: 700; color: #e2703a; line-height: 1; }
+  button { font-family: inherit; font-size: 22px; font-weight: 700; color: #fff; background: #e2703a; border: 3px solid #2b1d3a; border-radius: 999px; padding: 12px 40px; box-shadow: 0 6px 0 #2b1d3a; cursor: pointer; margin-top: 8px; }
+  button:active { transform: translateY(4px); box-shadow: 0 2px 0 #2b1d3a; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud"><div id="score">0</div><div id="best"></div></div>
+
+  <div class="screen" id="start">
+    <h1>FLIP<br>GUY</h1>
+    <p>Tap the guy to make him backflip. Tap him again <b>just before he lands</b> to keep the flips going.</p>
+    <p>Wait for the ring to turn <b style="color:#2fa84f">green</b>. Tap too early or too late and he lands on his head!</p>
+    <button id="playBtn">Play</button>
+  </div>
+
+  <div class="screen hidden" id="over">
+    <h2>KO! 💫</h2>
+    <div class="big" id="final">0</div>
+    <p id="bestOver"></p>
+    <button id="againBtn">Try again</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('wrap');
+const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best');
+let W, H, DPR, GROUND;
+
+const FEET = 56, HEADTOP = 64;           // distances from body center
+function getBest() { try { return +localStorage.getItem('flipGuyBest') || 0; } catch(e) { return 0; } }
+function setBest(v) { try { localStorage.setItem('flipGuyBest', v); } catch(e) {} }
+
+// ---------- sound ----------
+let actx = null;
+function beep(freq, dur = 0.08, type = 'sine', vol = 0.15) {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+  } catch(e) {}
+}
+
+// ---------- state ----------
+const guy = { x: 0, y: 0, angle: 0, tuck: 0, facing: 1, state: 'stand' };
+let flight = null;          // {x0,y0,x1,T,Hh,a0,t,w}
+let crash = null;           // {t, a0, a1, phase}
+let score = 0, playing = false, shake = 0, flash = 0;
+let fx = [], texts = [];
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  GROUND = H - 110;
+  if (guy.state === 'stand') { guy.x = W / 2; guy.y = GROUND - FEET; }
+}
+
+// difficulty
+function diff() {
+  const n = score;
+  return {
+    T: Math.max(0.55, 1.2 - n * 0.025),            // flip duration (s)
+    w: Math.max(0.12, 0.32 - n * 0.008),           // catch window (fraction of flip)
+    R: Math.max(40, 64 - n * 0.8),                 // tap radius
+    dx: Math.min(W * 0.55, 30 + n * 12),           // how far he travels
+    Hh: Math.min(H * 0.42, 170 + Math.random() * Math.min(150, n * 6)),
+  };
+}
+
+function launch() {
+  const d = diff();
+  let dir = Math.random() < 0.5 ? -1 : 1;
+  let x1 = guy.x + dir * (d.dx * (0.5 + Math.random() * 0.5));
+  const margin = 60;
+  if (x1 < margin || x1 > W - margin) { dir = -dir; x1 = guy.x + dir * (d.dx * (0.5 + Math.random() * 0.5)); }
+  x1 = Math.min(Math.max(x1, margin), W - margin);
+  guy.facing = x1 >= guy.x ? -1 : 1;   // backflip = travels backward
+  if (Math.abs(x1 - guy.x) < 5) guy.facing = Math.random() < .5 ? 1 : -1;
+  const a0 = ((guy.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  flight = { x0: guy.x, y0: guy.y, x1, T: d.T, Hh: d.Hh, a0: a0 > Math.PI ? a0 - Math.PI * 2 : a0, t: 0, w: d.w, R: d.R };
+  guy.state = 'fly';
+  beep(380 + Math.min(score, 30) * 12, 0.07, 'triangle');
+}
+
+function progress() { return flight ? flight.t / flight.T : 0; }
+
+function startCrash(reason) {
+  guy.state = 'crash';
+  crash = { t: 0, a0: guy.angle, dir: guy.facing, reason };
+  flight = null;
+  if (reason) addText(guy.x, guy.y - 90, reason, '#d23c3c');
+}
+
+function addText(x, y, text, color, size = 26) { texts.push({ x, y, text, color, size, life: 0.9 }); }
+function ringFx(x, y, color) { fx.push({ x, y, r: 20, life: 0.4, color }); }
+function dust(x, y, n = 10, color = '#c9a27a') {
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI + Math.random() * Math.PI;
+    fx.push({ x, y, vx: Math.cos(a) * (60 + Math.random() * 120), vy: Math.sin(a) * (40 + Math.random() * 100), life: 0.5 + Math.random() * 0.3, p: true, color });
+  }
+}
+
+// ---------- input ----------
+function tap(e) {
+  if (!playing) return;
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  const py = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+  const R = flight ? flight.R : diff().R;
+  const onGuy = Math.hypot(px - guy.x, py - guy.y) < R + 10;
+
+  if (guy.state === 'stand') { if (onGuy) launch(); return; }
+  if (guy.state !== 'fly') return;
+
+  const p = progress();
+  if (!onGuy) { addText(px, py, 'miss', '#8a7a8f', 18); return; }  // off-target taps are forgiven
+  if (p < 1 - flight.w) { startCrash('Too early!'); return; }
+  // caught!
+  const perfect = p > 0.97 && p < 1.03 || Math.abs(p - (1 - flight.w / 2)) < 0.03;
+  score += perfect ? 2 : 1;
+  scoreEl.textContent = score;
+  ringFx(guy.x, guy.y, perfect ? '#ffcc00' : '#2fa84f');
+  addText(guy.x, guy.y - 80, perfect ? 'PERFECT +2' : '+1', perfect ? '#e2a400' : '#2fa84f', perfect ? 28 : 26);
+  if (perfect) { flash = 0.15; beep(990, 0.12, 'square', 0.08); }
+  launch();
+}
+canvas.addEventListener('pointerdown', tap);
+
+document.getElementById('playBtn').onclick = startGame;
+document.getElementById('againBtn').onclick = startGame;
+
+function startGame() {
+  score = 0; scoreEl.textContent = 0; fx = []; texts = [];
+  guy.x = W / 2; guy.y = GROUND - FEET; guy.angle = 0; guy.tuck = 0; guy.state = 'stand'; flight = null; crash = null;
+  document.getElementById('start').classList.add('hidden');
+  document.getElementById('over').classList.add('hidden');
+  playing = true;
+  addText(W / 2, GROUND - 160, 'Tap him!', '#2b1d3a', 24);
+}
+
+function gameOver() {
+  playing = false;
+  const best = Math.max(getBest(), score); setBest(best);
+  bestEl.textContent = 'Best: ' + best;
+  document.getElementById('final').textContent = score;
+  document.getElementById('bestOver').textContent = score >= best && score > 0 ? '🏆 New best!' : 'Best: ' + best;
+  document.getElementById('over').classList.remove('hidden');
+}
+
+// ---------- drawing ----------
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lowestOffset(a) { // how far below the body center the lowest point sits
+  const c = Math.cos(a), s = Math.abs(Math.sin(a));
+  return Math.max(FEET * c, -HEADTOP * c) + 12 * s;
+}
+
+function drawGuy(ko) {
+  const t = guy.tuck;
+  ctx.save();
+  ctx.translate(guy.x, guy.y);
+  ctx.rotate(guy.angle);
+  ctx.scale(guy.facing, 1);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 7;
+
+  const sh = { x: 0, y: -28 }, hip = { x: 0, y: 12 };
+  // legs
+  const legs = [
+    { k: { x: lerp(7, 24, t), y: lerp(34, 16, t) }, f: { x: lerp(11, 10, t), y: lerp(FEET, 38, t) } },
+    { k: { x: lerp(-5, 18, t), y: lerp(34, 22, t) }, f: { x: lerp(-9, 4, t), y: lerp(FEET, 44, t) } },
+  ];
+  ctx.strokeStyle = '#3a6fd8';
+  for (const l of legs) { ctx.beginPath(); ctx.moveTo(hip.x, hip.y); ctx.lineTo(l.k.x, l.k.y); ctx.lineTo(l.f.x, l.f.y); ctx.stroke(); }
+  // shoes
+  ctx.fillStyle = '#2b1d3a';
+  for (const l of legs) { ctx.beginPath(); ctx.ellipse(l.f.x + 5, l.f.y + 2, 8, 4.5, 0, 0, Math.PI * 2); ctx.fill(); }
+  // torso (shirt)
+  ctx.strokeStyle = '#e2703a'; ctx.lineWidth = 16;
+  ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(hip.x, hip.y); ctx.stroke();
+  // arms
+  ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 6;
+  const arms = ko
+    ? [{ e: { x: 16, y: -40 }, h: { x: 26, y: -54 } }, { e: { x: -14, y: -40 }, h: { x: -22, y: -56 } }]
+    : [
+      { e: { x: lerp(10, 22, t), y: lerp(-8, -10, t) }, h: { x: lerp(14, 26, t), y: lerp(12, 14, t) } },
+      { e: { x: lerp(-8, 16, t), y: lerp(-8, -6, t) }, h: { x: lerp(-12, 20, t), y: lerp(12, 20, t) } },
+    ];
+  for (const a of arms) { ctx.beginPath(); ctx.moveTo(sh.x, sh.y + 2); ctx.lineTo(a.e.x, a.e.y); ctx.lineTo(a.h.x, a.h.y); ctx.stroke(); }
+  // head
+  ctx.fillStyle = '#ffd2a8'; ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, -48, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // cap
+  ctx.fillStyle = '#e2703a';
+  ctx.beginPath(); ctx.arc(0, -50, 15, Math.PI, 0); ctx.fill(); ctx.stroke();
+  ctx.fillRect(2, -52, 16, 4);
+  // face
+  ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 2.5;
+  if (ko) {
+    for (const ex of [4, 10]) { ctx.beginPath(); ctx.moveTo(ex - 2.5, -47.5); ctx.lineTo(ex + 2.5, -42.5); ctx.moveTo(ex + 2.5, -47.5); ctx.lineTo(ex - 2.5, -42.5); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = '#2b1d3a';
+    ctx.beginPath(); ctx.arc(7, -45, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, -39, 3, 0.1, Math.PI - 0.1); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawStars(cx, cy, time) {
+  for (let i = 0; i < 4; i++) {
+    const a = time * 4 + i * Math.PI / 2;
+    const x = cx + Math.cos(a) * 26, y = cy + Math.sin(a) * 9;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(time * 3);
+    ctx.fillStyle = '#ffcc00'; ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) { const r = k % 2 ? 3.5 : 8; const aa = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(aa) * r, Math.sin(aa) * r); }
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+}
+
+function drawScene(time) {
+  // sky
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#ffd59e'); g.addColorStop(1, '#ffeedd');
+  ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
+  // sun
+  ctx.fillStyle = '#ffb35c'; ctx.beginPath(); ctx.arc(W * 0.8, H * 0.2, 46, 0, Math.PI * 2); ctx.fill();
+  // hills
+  ctx.fillStyle = '#f2b98a';
+  ctx.beginPath(); ctx.moveTo(-20, GROUND);
+  for (let x = -20; x <= W + 20; x += 20) ctx.lineTo(x, GROUND - 60 - Math.sin(x * 0.012 + 1) * 30);
+  ctx.lineTo(W + 20, GROUND); ctx.fill();
+  // ground
+  ctx.fillStyle = '#7cc46b'; ctx.fillRect(-20, GROUND, W + 40, H - GROUND + 20);
+  ctx.fillStyle = '#5fa851'; ctx.fillRect(-20, GROUND, W + 40, 8);
+  // mat
+  ctx.fillStyle = '#4b8fe0'; ctx.fillRect(20, GROUND - 2, W - 40, 10);
+}
+
+// ---------- loop ----------
+let last = performance.now(), clock = 0;
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.033); last = now; clock += dt;
+
+  if (guy.state === 'stand') {
+    guy.tuck = Math.max(0, guy.tuck - dt * 6);
+    guy.angle = 0;
+    guy.y = GROUND - FEET + Math.sin(clock * 3) * 1.5;
+  } else if (guy.state === 'fly') {
+    flight.t += dt;
+    let p = flight.t / flight.T;
+    const pc = Math.min(p, 1);
+    guy.x = lerp(flight.x0, flight.x1, pc);
+    guy.y = Math.min(lerp(flight.y0, GROUND - FEET, pc) - flight.Hh * 4 * pc * (1 - pc), GROUND - FEET);
+    guy.angle = flight.a0 - guy.facing * Math.PI * 2 * pc;
+    guy.tuck = Math.sin(Math.PI * Math.min(1, pc * 1.15));
+    if (p > 1.05) { dust(guy.x, GROUND); startCrash('Too late!'); }
+  } else if (guy.state === 'crash') {
+    crash.t += dt;
+    const dir = crash.dir;
+    if (crash.t < 0.22) {                         // over-rotate onto head
+      const k = crash.t / 0.22;
+      guy.angle = crash.a0 - dir * Math.PI * k;
+      guy.tuck = Math.max(0, guy.tuck - dt * 8);
+    } else if (!crash.hit) {
+      crash.hit = true; shake = 16; dust(guy.x, GROUND, 18);
+      beep(110, 0.25, 'sawtooth', 0.12); beep(70, 0.35, 'square', 0.08);
+      if (navigator.vibrate) try { navigator.vibrate(150); } catch(e) {}
+      addText(guy.x, GROUND - 120, 'BONK!', '#2b1d3a', 34);
+      crash.a1 = guy.angle;
+    } else if (crash.t < 0.7) {                   // tip over to lie flat
+      const k = Math.min(1, (crash.t - 0.22) / 0.4);
+      const e = 1 - Math.pow(1 - k, 3);
+      guy.angle = crash.a1 - dir * (Math.PI / 2) * e;
+    } else if (!crash.done && crash.t > 1.4) { crash.done = true; gameOver(); }
+    guy.y = GROUND - lowestOffset(guy.angle);
+  }
+
+  // shake
+  ctx.save();
+  if (shake > 0) { ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); shake = Math.max(0, shake - dt * 50); }
+  drawScene(clock);
+
+  // shadow
+  const hgt = Math.max(0, (GROUND - FEET) - guy.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath(); ctx.ellipse(guy.x, GROUND + 3, Math.max(10, 30 - hgt * 0.05), 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  // approach ring
+  if (guy.state === 'fly') {
+    const p = progress(), w = flight.w;
+    const start = 1 - w - 0.3;
+    if (p > start) {
+      const inWin = p >= 1 - w;
+      const k = Math.min(1, (p - start) / (1 - start));
+      const r = lerp(flight.R * 2.6, flight.R * 0.9, k);
+      ctx.lineWidth = inWin ? 6 : 3;
+      ctx.strokeStyle = inWin ? '#2fa84f' : 'rgba(43,29,58,0.45)';
+      ctx.beginPath(); ctx.arc(guy.x, guy.y, r, 0, Math.PI * 2); ctx.stroke();
+      if (inWin) { ctx.fillStyle = 'rgba(47,168,79,0.12)'; ctx.beginPath(); ctx.arc(guy.x, guy.y, flight.R, 0, Math.PI * 2); ctx.fill(); }
+    }
+  } else if (guy.state === 'stand' && playing) {
+    const r = 58 + Math.sin(clock * 5) * 5;
+    ctx.strokeStyle = 'rgba(226,112,58,0.6)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.arc(guy.x, guy.y, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  drawGuy(guy.state === 'crash' && crash.hit);
+
+  if (guy.state === 'crash' && crash.hit) {
+    // head position for stars
+    const hx = guy.x + Math.sin(guy.angle) * 48;
+    const hy = guy.y - Math.cos(guy.angle) * 48;
+    drawStars(hx, hy - 22, clock);
+  }
+
+  // fx
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i]; f.life -= dt;
+    if (f.life <= 0) { fx.splice(i, 1); continue; }
+    if (f.p) {
+      f.vy += 300 * dt; f.x += f.vx * dt; f.y += f.vy * dt;
+      ctx.globalAlpha = Math.min(1, f.life * 2); ctx.fillStyle = f.color;
+      ctx.beginPath(); ctx.arc(f.x, f.y, 4, 0, Math.PI * 2); ctx.fill();
+    } else {
+      f.r += dt * 260; ctx.globalAlpha = f.life / 0.4; ctx.strokeStyle = f.color; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const t = texts[i]; t.life -= dt; t.y -= 40 * dt;
+    if (t.life <= 0) { texts.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, t.life * 2);
+    ctx.font = `700 ${t.size}px Fredoka, sans-serif`;
+    ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeText(t.text, t.x, t.y);
+    ctx.fillStyle = t.color; ctx.fillText(t.text, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 2})`; ctx.fillRect(0, 0, W, H); flash -= dt; }
+
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize', resize);
+resize();
+const b0 = getBest(); if (b0) bestEl.textContent = 'Best: ' + b0;
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
