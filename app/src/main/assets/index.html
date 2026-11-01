@@ -151,6 +151,7 @@ function tap(e) {
   scoreEl.textContent = score;
   ringFx(guy.x, guy.y, perfect ? '#ffcc00' : '#2fa84f');
   addText(guy.x, guy.y - 80, perfect ? 'PERFECT +2' : '+1', perfect ? '#e2a400' : '#2fa84f', perfect ? 28 : 26);
+  for (const m in MILESTONES) if (score - (perfect ? 2 : 1) < +m && score >= +m) { addText(W / 2, H * 0.32, MILESTONES[m], '#ffcc00', 34); texts[texts.length - 1].life = 2; if (+m === 25) { flash = 0.3; beep(523, 0.15, 'triangle'); setTimeout(() => beep(784, 0.25, 'triangle'), 150); } }
   if (perfect) { flash = 0.15; beep(990, 0.12, 'square', 0.08); }
   launch();
 }
@@ -190,6 +191,7 @@ function drawGuy(ko) {
   ctx.translate(guy.x, guy.y);
   ctx.rotate(guy.angle);
   ctx.scale(guy.facing, 1);
+  if (alt > 0.6) { ctx.shadowColor = `rgba(255,255,255,${Math.min(0.9, (alt - 0.6) * 2.5)})`; ctx.shadowBlur = 10; }
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 7;
 
@@ -247,29 +249,147 @@ function drawStars(cx, cy, time) {
   }
 }
 
-function drawScene(time) {
-  // sky
+// ---------- altitude / sky ----------
+let alt = 0;                 // 0 = ground level, 1 = space (score 25), >1 deeper space
+const SKY = [                // [alt, top, bottom]
+  [0.00, '#ffd59e', '#ffeedd'],
+  [0.35, '#7cc8ff', '#d6f0ff'],
+  [0.60, '#3d6fd6', '#8fc0f2'],
+  [0.82, '#141c4f', '#33509c'],
+  [1.00, '#04030c', '#120a2e'],
+];
+function hex(c) { return [1, 3, 5].map(i => parseInt(c.substr(i, 2), 16)); }
+function mix(c1, c2, t) { const a = hex(c1), b = hex(c2); return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`; }
+function skyAt(a, idx) {
+  a = Math.min(1, Math.max(0, a));
+  for (let i = 0; i < SKY.length - 1; i++) {
+    const [a0, ...c0] = SKY[i], [a1, ...c1] = SKY[i + 1];
+    if (a <= a1) return mix(c0[idx], c1[idx], (a - a0) / (a1 - a0));
+  }
+  return SKY[SKY.length - 1][idx + 1];
+}
+const clamp01 = v => Math.min(1, Math.max(0, v));
+
+const bgStars = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + 0.3, tw: Math.random() * 6, sp: Math.random() * 0.5 + 0.2 }));
+let clouds = Array.from({ length: 6 }, () => newCloud(Math.random()));
+function newCloud(y) { return { x: Math.random(), y: y ?? -0.15, s: 0.6 + Math.random() * 0.9, sp: 0.6 + Math.random() * 0.8 }; }
+
+const MILESTONES = { 8: 'Climbing! ☁️', 15: 'Above the clouds!', 21: 'Leaving the sky...', 25: 'SPACE! 🚀', 40: 'Deep space 🌌' };
+
+function drawCloud(x, y, s, a) {
+  ctx.globalAlpha = a; ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x, y, 22 * s, 0, Math.PI * 2); ctx.arc(x + 24 * s, y - 10 * s, 26 * s, 0, Math.PI * 2);
+  ctx.arc(x + 50 * s, y, 20 * s, 0, Math.PI * 2);
+  ctx.rect(x, y - 2 * s, 50 * s, 20 * s); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawScene(time, dt) {
+  const a = clamp01(alt), deep = clamp01(alt - 1);
+  // sky gradient
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#ffd59e'); g.addColorStop(1, '#ffeedd');
+  g.addColorStop(0, skyAt(a, 0)); g.addColorStop(1, skyAt(a, 1));
   ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
-  // sun
-  ctx.fillStyle = '#ffb35c'; ctx.beginPath(); ctx.arc(W * 0.8, H * 0.2, 46, 0, Math.PI * 2); ctx.fill();
-  // hills
-  ctx.fillStyle = '#f2b98a';
-  ctx.beginPath(); ctx.moveTo(-20, GROUND);
-  for (let x = -20; x <= W + 20; x += 20) ctx.lineTo(x, GROUND - 60 - Math.sin(x * 0.012 + 1) * 30);
-  ctx.lineTo(W + 20, GROUND); ctx.fill();
-  // ground
-  ctx.fillStyle = '#7cc46b'; ctx.fillRect(-20, GROUND, W + 40, H - GROUND + 20);
-  ctx.fillStyle = '#5fa851'; ctx.fillRect(-20, GROUND, W + 40, 8);
+
+  // deep-space nebula
+  if (deep > 0) {
+    const n = ctx.createRadialGradient(W * 0.25, H * 0.3, 10, W * 0.25, H * 0.3, W * 0.9);
+    n.addColorStop(0, `rgba(170,60,220,${0.35 * deep})`); n.addColorStop(1, 'rgba(170,60,220,0)');
+    ctx.fillStyle = n; ctx.fillRect(0, 0, W, H);
+    const n2 = ctx.createRadialGradient(W * 0.85, H * 0.6, 10, W * 0.85, H * 0.6, W * 0.7);
+    n2.addColorStop(0, `rgba(40,200,220,${0.25 * deep})`); n2.addColorStop(1, 'rgba(40,200,220,0)');
+    ctx.fillStyle = n2; ctx.fillRect(0, 0, W, H);
+  }
+
+  // stars (fade in high up, drift down = rising feel)
+  const starA = clamp01((a - 0.55) / 0.4);
+  if (starA > 0) {
+    ctx.fillStyle = '#fff';
+    for (const s of bgStars) {
+      s.y += s.sp * dt * 0.02 * (1 + deep * 2); if (s.y > 1) { s.y = 0; s.x = Math.random(); }
+      ctx.globalAlpha = starA * (0.55 + Math.sin(time * 2 + s.tw) * 0.45);
+      ctx.beginPath(); ctx.arc(s.x * W, s.y * GROUND, s.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // sun -> fades out, ringed planet fades in
+  const sunA = 1 - clamp01((a - 0.5) / 0.3);
+  if (sunA > 0) { ctx.globalAlpha = sunA; ctx.fillStyle = '#ffb35c'; ctx.beginPath(); ctx.arc(W * 0.8, H * 0.2 + a * 120, 46, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  const planA = clamp01((a - 0.85) / 0.15);
+  if (planA > 0) {
+    const px = W * 0.78, py = H * 0.2 + Math.sin(time * 0.3) * 6;
+    ctx.globalAlpha = planA;
+    ctx.fillStyle = '#e8a04c'; ctx.beginPath(); ctx.arc(px, py, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c97a2e'; ctx.beginPath(); ctx.arc(px - 6, py + 6, 30, 0.2, Math.PI - 0.6); ctx.fill();
+    ctx.strokeStyle = '#ffe2a8'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.ellipse(px, py, 52, 12, -0.35, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#d8d4e8'; ctx.beginPath(); ctx.arc(W * 0.18, H * 0.12, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // clouds rushing downward (only in the climbing zone)
+  const cloudA = clamp01(a / 0.15) * (1 - clamp01((a - 0.7) / 0.2));
+  const climb = 0.05 + a * 0.35;
+  for (const c of clouds) {
+    c.y += c.sp * climb * dt;
+    if (c.y > 1.1) Object.assign(c, newCloud());
+    if (cloudA > 0) drawCloud(c.x * W - 30, c.y * GROUND, c.s, cloudA * 0.85);
+  }
+
+  // hills sink away as we climb
+  const hillA = 1 - clamp01(a / 0.4);
+  if (hillA > 0) {
+    ctx.globalAlpha = hillA; ctx.fillStyle = '#f2b98a';
+    const drop = a * 260;
+    ctx.beginPath(); ctx.moveTo(-20, GROUND + 20);
+    for (let x = -20; x <= W + 20; x += 20) ctx.lineTo(x, GROUND - 60 + drop - Math.sin(x * 0.012 + 1) * 30);
+    ctx.lineTo(W + 20, GROUND + 20); ctx.fill(); ctx.globalAlpha = 1;
+  }
+
+  // Earth curve far below once in space
+  const earthA = clamp01((a - 0.7) / 0.3);
+  if (earthA > 0) {
+    const R = W * 2.2, cy = GROUND + R - 40 + (1 - earthA) * 120 + deep * 60;
+    ctx.globalAlpha = earthA;
+    const eg = ctx.createRadialGradient(W / 2, cy, R - 60, W / 2, cy, R + 30);
+    eg.addColorStop(0, '#1f63c9'); eg.addColorStop(0.9, '#5fb4ff'); eg.addColorStop(1, 'rgba(120,200,255,0)');
+    ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(W / 2, cy, R + 30, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3f9c4a';
+    ctx.beginPath(); ctx.ellipse(W * 0.3, cy - R + 30, 60, 14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(W * 0.75, cy - R + 45, 40, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // ground: full field -> floating platform in space
+  const plat = clamp01((a - 0.6) / 0.35);
+  const groundH = lerp(H - GROUND + 20, 34, plat);
+  const inset = lerp(-20, 30, plat);
+  ctx.fillStyle = mix('#7cc46b', '#7d7f99', plat);
+  if (plat > 0) { ctx.beginPath(); ctx.moveTo(inset, GROUND); ctx.lineTo(W - inset, GROUND); ctx.lineTo(W - inset - 30 * plat, GROUND + groundH); ctx.lineTo(inset + 30 * plat, GROUND + groundH); ctx.fill(); }
+  else ctx.fillRect(inset, GROUND, W - inset * 2, groundH);
+  ctx.fillStyle = mix('#5fa851', '#b9bcd6', plat); ctx.fillRect(inset, GROUND, W - inset * 2, 8);
+  // thrusters under platform
+  if (plat > 0.5) {
+    for (const tx of [W * 0.3, W * 0.7]) {
+      const fl = 14 + Math.sin(time * 30 + tx) * 5;
+      ctx.globalAlpha = (plat - 0.5) * 2;
+      ctx.fillStyle = '#ffb347'; ctx.beginPath(); ctx.moveTo(tx - 10, GROUND + groundH); ctx.lineTo(tx + 10, GROUND + groundH); ctx.lineTo(tx, GROUND + groundH + fl * 1.8); ctx.fill();
+      ctx.fillStyle = '#fff3c4'; ctx.beginPath(); ctx.moveTo(tx - 5, GROUND + groundH); ctx.lineTo(tx + 5, GROUND + groundH); ctx.lineTo(tx, GROUND + groundH + fl); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
   // mat
-  ctx.fillStyle = '#4b8fe0'; ctx.fillRect(20, GROUND - 2, W - 40, 10);
+  ctx.fillStyle = '#4b8fe0'; ctx.fillRect(inset + 20, GROUND - 2, W - inset * 2 - 40, 10);
 }
 
 // ---------- loop ----------
 let last = performance.now(), clock = 0;
 function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.033); last = now; clock += dt;
+  alt += (score / 25 - alt) * Math.min(1, dt * 1.5);
+  document.getElementById('best').style.color = alt > 0.6 ? '#fff' : '';
 
   if (guy.state === 'stand') {
     guy.tuck = Math.max(0, guy.tuck - dt * 6);
@@ -308,7 +428,7 @@ function loop(now) {
   // shake
   ctx.save();
   if (shake > 0) { ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); shake = Math.max(0, shake - dt * 50); }
-  drawScene(clock);
+  drawScene(clock, dt);
 
   // shadow
   const hgt = Math.max(0, (GROUND - FEET) - guy.y);
@@ -324,7 +444,7 @@ function loop(now) {
       const k = Math.min(1, (p - start) / (1 - start));
       const r = lerp(flight.R * 2.6, flight.R * 0.9, k);
       ctx.lineWidth = inWin ? 6 : 3;
-      ctx.strokeStyle = inWin ? '#2fa84f' : 'rgba(43,29,58,0.45)';
+      ctx.strokeStyle = inWin ? '#2fa84f' : (alt > 0.6 ? 'rgba(255,255,255,0.6)' : 'rgba(43,29,58,0.45)');
       ctx.beginPath(); ctx.arc(guy.x, guy.y, r, 0, Math.PI * 2); ctx.stroke();
       if (inWin) { ctx.fillStyle = 'rgba(47,168,79,0.12)'; ctx.beginPath(); ctx.arc(guy.x, guy.y, flight.R, 0, Math.PI * 2); ctx.fill(); }
     }
