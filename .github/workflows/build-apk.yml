@@ -17,12 +17,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          gradle assembleDebug --stacktrace
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk FlipGuy.apk
       - name: Publish release with APK
