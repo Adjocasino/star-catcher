@@ -10,17 +10,33 @@
   html, body { height: 100%; overflow: hidden; background: #ffe9c7; font-family: 'Fredoka', system-ui, sans-serif; color: #2b1d3a; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
   #wrap { position: relative; width: 100%; height: 100%; max-width: 520px; margin: 0 auto; }
   canvas { display: block; width: 100%; height: 100%; }
+  .hidden { display: none !important; }
   #hud { position: absolute; top: 14px; left: 0; right: 0; text-align: center; pointer-events: none; }
-  #score { font-size: 64px; font-weight: 700; line-height: 1; color: #fff; text-shadow: 0 4px 0 #e2703a, 0 8px 18px rgba(0,0,0,.15); }
-  #best { font-size: 16px; font-weight: 500; opacity: .7; margin-top: 4px; }
-  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; background: rgba(255,233,199,.82); backdrop-filter: blur(2px); }
-  .screen.hidden { display: none; }
+  #score { font-size: 64px; font-weight: 700; line-height: 1; color: #fff; text-shadow: 0 4px 0 #e2703a, 0 8px 18px rgba(0,0,0,.15); display: inline-block; }
+  #best { font-size: 16px; font-weight: 500; opacity: .75; margin-top: 4px; }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; background: rgba(255,233,199,.86); backdrop-filter: blur(2px); overflow-y: auto; touch-action: pan-y; }
   h1 { font-size: 52px; line-height: .95; color: #e2703a; text-shadow: 0 4px 0 #2b1d3a; }
   h2 { font-size: 34px; color: #2b1d3a; }
-  p { font-size: 17px; max-width: 300px; line-height: 1.4; font-weight: 500; }
+  p { font-size: 16px; max-width: 310px; line-height: 1.4; font-weight: 500; }
+  .small { font-size: 13px; opacity: .7; }
   .big { font-size: 72px; font-weight: 700; color: #e2703a; line-height: 1; }
-  button { font-family: inherit; font-size: 22px; font-weight: 700; color: #fff; background: #e2703a; border: 3px solid #2b1d3a; border-radius: 999px; padding: 12px 40px; box-shadow: 0 6px 0 #2b1d3a; cursor: pointer; margin-top: 8px; }
-  button:active { transform: translateY(4px); box-shadow: 0 2px 0 #2b1d3a; }
+  .btn { font-family: inherit; font-size: 22px; font-weight: 700; color: #fff; background: #e2703a; border: 3px solid #2b1d3a; border-radius: 999px; padding: 12px 40px; box-shadow: 0 6px 0 #2b1d3a; cursor: pointer; margin-top: 6px; }
+  .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2b1d3a; }
+  .btn:disabled { opacity: .45; }
+  .btn.ghost { background: #fff; color: #2b1d3a; font-size: 18px; padding: 8px 28px; }
+  .seg { display: flex; border: 3px solid #2b1d3a; border-radius: 999px; overflow: hidden; background: #fff; }
+  .seg button { font-family: inherit; font-size: 17px; font-weight: 700; border: none; background: transparent; color: #2b1d3a; padding: 8px 20px; cursor: pointer; }
+  .seg button.on { background: #2b1d3a; color: #fff; }
+  #musicPanel { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 330px; }
+  .tracks { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .chip { font-family: inherit; font-size: 15px; font-weight: 700; border: 2px solid #2b1d3a; background: #fff; color: #2b1d3a; border-radius: 14px; padding: 8px 12px; cursor: pointer; }
+  .chip.on { background: #2fa84f; color: #fff; }
+  .chip.pick { width: 100%; background: #fff4e6; }
+  #songStatus { font-size: 15px; font-weight: 500; min-height: 20px; }
+  .sync { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+  .sync button { font-family: inherit; width: 32px; height: 32px; border-radius: 50%; border: 2px solid #2b1d3a; background: #fff; font-size: 18px; font-weight: 700; color: #2b1d3a; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 3px solid #e2703a; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -30,16 +46,36 @@
 
   <div class="screen" id="start">
     <h1>FLIP<br>GUY</h1>
-    <p>Tap the guy to make him backflip. Tap him again <b>just before he lands</b> to keep the flips going.</p>
-    <p>Wait for the ring to turn <b style="color:#2fa84f">green</b>. Tap too early or too late and he lands on his head!</p>
-    <button id="playBtn">Play</button>
+    <div class="seg"><button id="mClassic" class="on">Classic</button><button id="mMusic">Music 🎵</button></div>
+
+    <div id="classicPanel">
+      <p>Tap the guy to make him backflip. Tap him again when the ring turns <b style="color:#2fa84f">green</b> to keep flipping.</p>
+      <p class="small" style="margin-top:6px">It gets faster the higher you go. Tap too early or too late and he lands on his head!</p>
+    </div>
+
+    <div id="musicPanel" class="hidden">
+      <p>Every landing hits the beat. Tap on the <b style="color:#2fa84f">green</b> to stay alive through the whole song.</p>
+      <div class="tracks">
+        <button class="chip" data-track="0">😌 Chill</button>
+        <button class="chip" data-track="1">🎤 Pop</button>
+        <button class="chip" data-track="2">🔥 Hype</button>
+      </div>
+      <label class="chip pick">📁 Pick a song from your phone<input type="file" id="file" accept="audio/*" hidden></label>
+      <div id="songStatus">Choose a built-in beat or your own song</div>
+      <div class="sync">Audio sync <button id="syncMinus">−</button><span id="syncVal">0 ms</span><button id="syncPlus">+</button></div>
+      <p class="small">MP3/M4A files saved on your phone. Songs from Spotify/YouTube won't work. With Bluetooth earphones, if you keep getting “Too late!”, raise sync.</p>
+    </div>
+
+    <button class="btn" id="playBtn">Play</button>
   </div>
 
   <div class="screen hidden" id="over">
-    <h2>KO! 💫</h2>
+    <h2 id="overTitle">KO! 💫</h2>
     <div class="big" id="final">0</div>
-    <p id="bestOver"></p>
-    <button id="againBtn">Try again</button>
+    <p id="overLine1"></p>
+    <p id="overLine2" class="small"></p>
+    <button class="btn" id="againBtn">Try again</button>
+    <button class="btn ghost" id="menuBtn">Menu</button>
   </div>
 </div>
 
@@ -49,17 +85,24 @@ const ctx = canvas.getContext('2d');
 const wrap = document.getElementById('wrap');
 const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
+const $ = id => document.getElementById(id);
 let W, H, DPR, GROUND;
 
-const FEET = 56, HEADTOP = 64;           // distances from body center
-function getBest() { try { return +localStorage.getItem('flipGuyBest') || 0; } catch(e) { return 0; } }
-function setBest(v) { try { localStorage.setItem('flipGuyBest', v); } catch(e) {} }
+const FEET = 56, HEADTOP = 64;
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e) { return null; } }
+function getBest() { return +store('flipGuyBest') || 0; }
+function setBest(v) { store('flipGuyBest', v); }
 
-// ---------- sound ----------
+// ---------- audio ----------
 let actx = null;
+function ensureAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
+  if (actx && actx.state === 'suspended') actx.resume();
+  return actx;
+}
 function beep(freq, dur = 0.08, type = 'sine', vol = 0.15) {
   try {
-    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!ensureAudio()) return;
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = type; o.frequency.value = freq;
     g.gain.setValueAtTime(vol, actx.currentTime);
@@ -68,10 +111,17 @@ function beep(freq, dur = 0.08, type = 'sine', vol = 0.15) {
   } catch(e) {}
 }
 
-// ---------- state ----------
+// ---------- mode / music state ----------
+let mode = 'classic';
+let song = null;            // {name, buffer, beats, period, bpm, flipDur, landings, duration}
+let src = null, musicGain = null, songStart = 0, musicOn = false;
+let landIdx = -1, beatPtr = 0, pulse = 0, perfects = 0, songEnded = false;
+let syncMs = +store('flipGuySync') || 0;
+function songTime() { return actx ? actx.currentTime - songStart - (actx.outputLatency || 0) - syncMs / 1000 : 0; }
+
+// ---------- game state ----------
 const guy = { x: 0, y: 0, angle: 0, tuck: 0, facing: 1, state: 'stand' };
-let flight = null;          // {x0,y0,x1,T,Hh,a0,t,w}
-let crash = null;           // {t, a0, a1, phase}
+let flight = null, crash = null;
 let score = 0, playing = false, shake = 0, flash = 0;
 let fx = [], texts = [];
 
@@ -81,34 +131,45 @@ function resize() {
   canvas.width = W * DPR; canvas.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   GROUND = H - 110;
-  if (guy.state === 'stand') { guy.x = W / 2; guy.y = GROUND - FEET; }
+  if (guy.state === 'stand') { guy.x = guy.x || W / 2; guy.y = GROUND - FEET; }
 }
 
-// difficulty
 function diff() {
+  if (mode === 'music') return { R: 58, dx: 90, Hh: Math.min(H * 0.38, 120 + song.flipDur * 110) };
   const n = score;
   return {
-    T: Math.max(0.55, 1.2 - n * 0.025),            // flip duration (s)
-    w: Math.max(0.12, 0.32 - n * 0.008),           // catch window (fraction of flip)
-    R: Math.max(40, 64 - n * 0.8),                 // tap radius
-    dx: Math.min(W * 0.55, 30 + n * 12),           // how far he travels
+    T: Math.max(0.55, 1.2 - n * 0.025),
+    w: Math.max(0.12, 0.32 - n * 0.008),
+    R: Math.max(40, 64 - n * 0.8),
+    dx: Math.min(W * 0.55, 30 + n * 12),
     Hh: Math.min(H * 0.42, 170 + Math.random() * Math.min(150, n * 6)),
   };
 }
 
 function launch() {
   const d = diff();
+  let T, w, late, perf, land = null, t0 = 0;
+  if (mode === 'music') {
+    landIdx++;
+    if (landIdx >= song.landings.length) { finishSong(); return; }
+    land = song.landings[landIdx];
+    t0 = songTime();
+    T = Math.max(0.3, land - t0);
+    const winSec = Math.min(0.26, song.flipDur * 0.3);
+    w = Math.min(0.9, winSec / T); late = 0.11 / T; perf = 0.07 / T;
+  } else { T = d.T; w = d.w; late = 0.05; perf = 0.03; }
+
   let dir = Math.random() < 0.5 ? -1 : 1;
   let x1 = guy.x + dir * (d.dx * (0.5 + Math.random() * 0.5));
   const margin = 60;
   if (x1 < margin || x1 > W - margin) { dir = -dir; x1 = guy.x + dir * (d.dx * (0.5 + Math.random() * 0.5)); }
   x1 = Math.min(Math.max(x1, margin), W - margin);
-  guy.facing = x1 >= guy.x ? -1 : 1;   // backflip = travels backward
+  guy.facing = x1 >= guy.x ? -1 : 1;
   if (Math.abs(x1 - guy.x) < 5) guy.facing = Math.random() < .5 ? 1 : -1;
   const a0 = ((guy.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  flight = { x0: guy.x, y0: guy.y, x1, T: d.T, Hh: d.Hh, a0: a0 > Math.PI ? a0 - Math.PI * 2 : a0, t: 0, w: d.w, R: d.R };
+  flight = { x0: guy.x, y0: guy.y, x1, T, Hh: d.Hh, a0: a0 > Math.PI ? a0 - Math.PI * 2 : a0, t: 0, t0, land, w, late, perf, R: d.R };
   guy.state = 'fly';
-  beep(380 + Math.min(score, 30) * 12, 0.07, 'triangle');
+  if (mode === 'classic') beep(380 + Math.min(score, 30) * 12, 0.07, 'triangle');
 }
 
 function progress() { return flight ? flight.t / flight.T : 0; }
@@ -118,9 +179,10 @@ function startCrash(reason) {
   crash = { t: 0, a0: guy.angle, dir: guy.facing, reason };
   flight = null;
   if (reason) addText(guy.x, guy.y - 90, reason, '#d23c3c');
+  if (mode === 'music') stopMusic(0.8);
 }
 
-function addText(x, y, text, color, size = 26) { texts.push({ x, y, text, color, size, life: 0.9 }); }
+function addText(x, y, text, color, size = 26, life = 0.9) { texts.push({ x, y, text, color, size, life }); }
 function ringFx(x, y, color) { fx.push({ x, y, r: 20, life: 0.4, color }); }
 function dust(x, y, n = 10, color = '#c9a27a') {
   for (let i = 0; i < n; i++) {
@@ -129,87 +191,322 @@ function dust(x, y, n = 10, color = '#c9a27a') {
   }
 }
 
+const MILESTONES = { 8: 'Climbing! ☁️', 15: 'Above the clouds!', 21: 'Leaving the sky...', 25: 'SPACE! 🚀', 40: 'Deep space 🌌' };
+
 // ---------- input ----------
 function tap(e) {
   if (!playing) return;
   e.preventDefault();
+  ensureAudio();
   const r = canvas.getBoundingClientRect();
-  const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-  const py = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+  const px = e.clientX - r.left, py = e.clientY - r.top;
   const R = flight ? flight.R : diff().R;
   const onGuy = Math.hypot(px - guy.x, py - guy.y) < R + 10;
 
-  if (guy.state === 'stand') { if (onGuy) launch(); return; }
+  if (guy.state === 'stand') { if (onGuy && mode === 'classic') launch(); return; }
   if (guy.state !== 'fly') return;
 
   const p = progress();
-  if (!onGuy) { addText(px, py, 'miss', '#8a7a8f', 18); return; }  // off-target taps are forgiven
+  if (!onGuy) { addText(px, py, 'miss', '#8a7a8f', 18); return; }
   if (p < 1 - flight.w) { startCrash('Too early!'); return; }
-  // caught!
-  const perfect = p > 0.97 && p < 1.03 || Math.abs(p - (1 - flight.w / 2)) < 0.03;
-  score += perfect ? 2 : 1;
+
+  let perfect, gain;
+  if (mode === 'music') { perfect = Math.abs(p - 1) < flight.perf; gain = 1; if (perfect) perfects++; }
+  else { perfect = (p > 0.97 && p < 1.03) || Math.abs(p - (1 - flight.w / 2)) < 0.03; gain = perfect ? 2 : 1; }
+  const before = score;
+  score += gain;
   scoreEl.textContent = score;
   ringFx(guy.x, guy.y, perfect ? '#ffcc00' : '#2fa84f');
-  addText(guy.x, guy.y - 80, perfect ? 'PERFECT +2' : '+1', perfect ? '#e2a400' : '#2fa84f', perfect ? 28 : 26);
-  for (const m in MILESTONES) if (score - (perfect ? 2 : 1) < +m && score >= +m) { addText(W / 2, H * 0.32, MILESTONES[m], '#ffcc00', 34); texts[texts.length - 1].life = 2; if (+m === 25) { flash = 0.3; beep(523, 0.15, 'triangle'); setTimeout(() => beep(784, 0.25, 'triangle'), 150); } }
-  if (perfect) { flash = 0.15; beep(990, 0.12, 'square', 0.08); }
+  const label = mode === 'music' ? (perfect ? 'PERFECT' : 'Good') : (perfect ? 'PERFECT +2' : '+1');
+  addText(guy.x, guy.y - 80, label, perfect ? '#e2a400' : '#2fa84f', perfect ? 28 : 24);
+  if (mode === 'classic') {
+    for (const m in MILESTONES) if (before < +m && score >= +m) {
+      addText(W / 2, H * 0.32, MILESTONES[m], '#ffcc00', 34, 2);
+      if (+m === 25) { flash = 0.3; beep(523, 0.15, 'triangle'); setTimeout(() => beep(784, 0.25, 'triangle'), 150); }
+    }
+    if (perfect) beep(990, 0.12, 'square', 0.08);
+  }
+  if (perfect) flash = Math.max(flash, 0.12);
   launch();
 }
 canvas.addEventListener('pointerdown', tap);
 
-document.getElementById('playBtn').onclick = startGame;
-document.getElementById('againBtn').onclick = startGame;
+// ---------- menus ----------
+function setMode(m) {
+  mode = m;
+  $('mClassic').classList.toggle('on', m === 'classic');
+  $('mMusic').classList.toggle('on', m === 'music');
+  $('classicPanel').classList.toggle('hidden', m !== 'classic');
+  $('musicPanel').classList.toggle('hidden', m !== 'music');
+  $('playBtn').disabled = m === 'music' && !song;
+  bestEl.textContent = m === 'classic' && getBest() ? 'Best: ' + getBest() : '';
+}
+$('mClassic').onclick = () => setMode('classic');
+$('mMusic').onclick = () => setMode('music');
+$('playBtn').onclick = startGame;
+$('againBtn').onclick = startGame;
+$('menuBtn').onclick = () => { $('over').classList.add('hidden'); $('start').classList.remove('hidden'); setMode(mode); };
+function showSync() { $('syncVal').textContent = (syncMs > 0 ? '+' : '') + syncMs + ' ms'; }
+$('syncMinus').onclick = () => { syncMs -= 20; store('flipGuySync', syncMs); showSync(); };
+$('syncPlus').onclick = () => { syncMs += 20; store('flipGuySync', syncMs); showSync(); };
+showSync();
 
+function setStatus(html) { $('songStatus').innerHTML = html; }
+
+document.querySelectorAll('[data-track]').forEach(b => b.onclick = async () => {
+  ensureAudio();
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+  b.classList.add('on');
+  song = null; $('playBtn').disabled = true;
+  setStatus('<span class="spinner"></span>Making the beat…');
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const def = TRACKS[+b.dataset.track];
+    const buffer = await makeTrack(def);
+    const period = 60 / def.bpm;
+    const beats = []; for (let i = 0; i < def.bars * 4; i++) beats.push(0.5 + i * period);
+    song = prepareSong(def.name, buffer, beats, period, 0.5 + 8 * period, null);
+    setStatus(`✅ <b>${def.name}</b> · ${def.bpm} BPM`);
+    $('playBtn').disabled = false;
+  } catch(err) { setStatus('Could not make the beat on this device.'); }
+});
+
+$('file').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+  song = null; $('playBtn').disabled = true;
+  const name = file.name.replace(/\.[^.]+$/, '');
+  setStatus('<span class="spinner"></span>Loading song…');
+  try {
+    ensureAudio();
+    const data = await file.arrayBuffer();
+    const buffer = await new Promise((res, rej) => actx.decodeAudioData(data, res, rej));
+    setStatus('<span class="spinner"></span>Finding the beat…');
+    await new Promise(r => setTimeout(r, 30));
+    const a = await analyze(buffer);
+    song = prepareSong(name, buffer, a.beats, a.period, a.start, a.env);
+    setStatus(`✅ <b>${escapeHtml(name)}</b> · ${Math.round(60 / a.period)} BPM`);
+    $('playBtn').disabled = false;
+  } catch(err) {
+    setStatus("Couldn't read that file. Try an MP3 or M4A.");
+  }
+  e.target.value = '';
+});
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// ---------- beat detection ----------
+async function analyze(buffer) {
+  const sr = buffer.sampleRate, n = buffer.length;
+  const c0 = buffer.getChannelData(0), c1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : c0;
+  const hop = Math.round(sr * 0.01), FR = 0.01;           // 10 ms frames
+  const frames = Math.floor(n / hop);
+  const low = new Float32Array(frames), high = new Float32Array(frames), rms = new Float32Array(frames);
+  const a = 1 - Math.exp(-2 * Math.PI * 150 / sr);
+  let lp = 0;
+  for (let f = 0; f < frames; f++) {
+    let el = 0, eh = 0, ea = 0; const base = f * hop;
+    for (let i = 0; i < hop; i++) {
+      const x = (c0[base + i] + c1[base + i]) * 0.5;
+      lp += a * (x - lp);
+      el += lp * lp; const h = x - lp; eh += h * h; ea += x * x;
+    }
+    low[f] = Math.log(1e-7 + el); high[f] = Math.log(1e-7 + eh); rms[f] = ea;
+    if (f % 6000 === 0) await new Promise(r => setTimeout(r));
+  }
+  // onset envelope
+  let env = new Float32Array(frames);
+  for (let f = 1; f < frames; f++) env[f] = Math.max(0, low[f] - low[f - 1]) + 0.6 * Math.max(0, high[f] - high[f - 1]);
+  const smooth = new Float32Array(frames); let acc = 0; const Wn = 25;
+  for (let f = 0; f < frames; f++) { acc += env[f]; if (f >= Wn) acc -= env[f - Wn]; smooth[f] = acc / Math.min(f + 1, Wn); }
+  let mx = 0;
+  for (let f = 0; f < frames; f++) { env[f] = Math.max(0, env[f] - smooth[f]); mx = Math.max(mx, env[f]); }
+  if (mx > 0) for (let f = 0; f < frames; f++) env[f] /= mx;
+
+  // tempo: autocorrelation over 60–190 BPM, preferring ~120
+  const minLag = Math.floor(60 / 190 / FR), maxLag = Math.ceil(60 / 60 / FR);
+  const ac = new Float32Array(maxLag + 2);
+  for (let L = minLag; L <= maxLag + 1; L++) {
+    let s = 0; for (let i = 0; i + L < frames; i++) s += env[i] * env[i + L];
+    const bpm = 60 / (L * FR);
+    const wgt = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 120) / 0.7, 2));
+    ac[L] = s * wgt;
+  }
+  let best = minLag; for (let L = minLag; L <= maxLag; L++) if (ac[L] > ac[best]) best = L;
+  let lag = best;
+  if (best > minLag && best < maxLag) { const y0 = ac[best - 1], y1 = ac[best], y2 = ac[best + 1]; const d = (y0 - 2 * y1 + y2); if (d !== 0) lag = best + 0.5 * (y0 - y2) / d; }
+  await new Promise(r => setTimeout(r));
+
+  // refine period + phase with a comb over the whole song
+  let bestP = lag, bestPh = 0, bestS = -1;
+  for (let k = -12; k <= 12; k++) {
+    const P = lag * (1 + k * 0.0008);
+    for (let ph = 0; ph < P; ph += 1) {
+      let s = 0; for (let t = ph; t < frames; t += P) s += env[Math.round(t)] || 0;
+      if (s > bestS) { bestS = s; bestP = P; bestPh = ph; }
+    }
+  }
+  // track beats with small local corrections (handles slight drift)
+  const beats = [];
+  let t = bestPh;
+  while (t < frames - 1) {
+    const lo = Math.max(0, Math.round(t - bestP * 0.08)), hi = Math.min(frames - 1, Math.round(t + bestP * 0.08));
+    let pk = Math.round(t), pv = 0;
+    for (let i = lo; i <= hi; i++) { const v = env[i] * Math.exp(-0.5 * Math.pow((i - t) / (bestP * 0.05), 2)); if (v > pv) { pv = v; pk = i; } }
+    const adj = pv > 0.15 ? t + 0.5 * (pk - t) : t;
+    beats.push(adj * FR);
+    t = adj + bestP;
+  }
+  // where the music actually starts (skip silent intros)
+  const secF = Math.round(1 / FR), secs = [];
+  for (let s = 0; s + secF <= frames; s += secF) { let e = 0; for (let i = s; i < s + secF; i++) e += rms[i]; secs.push(e); }
+  const sorted = [...secs].sort((x, y) => x - y), med = sorted[Math.floor(sorted.length / 2)] || 0;
+  let start = 0; for (let i = 0; i < secs.length; i++) if (secs[i] > med * 0.35) { start = i; break; }
+  return { beats, period: bestP * FR, start: start + 1, env: { data: env, FR } };
+}
+
+function prepareSong(name, buffer, beats, period, startAfter, env) {
+  let per = Math.max(1, Math.round(1.0 / period));
+  if (per * period < 0.6) per++;
+  const flipDur = per * period;
+  const duration = buffer.duration;
+  const minFirst = Math.max(startAfter, 1.6 + flipDur);
+  let first = beats.findIndex(b => b >= minFirst);
+  if (first < 0) first = 0;
+  // pick the beat-phase with the strongest hits (usually the downbeat)
+  let off = 0;
+  if (env && per > 1) {
+    let bestS = -1;
+    for (let o = 0; o < per; o++) {
+      let s = 0; for (let i = first + o; i < beats.length; i += per) s += env.data[Math.round(beats[i] / env.FR)] || 0;
+      if (s > bestS) { bestS = s; off = o; }
+    }
+  } else if (!env) { off = (4 - (first % 4)) % 4 % per; }
+  const landings = [];
+  for (let i = first + off; i < beats.length; i += per) if (beats[i] < duration - 0.4) landings.push(beats[i]);
+  return { name, buffer, beats, period, flipDur, landings, duration };
+}
+
+// ---------- built-in beats (generated, original) ----------
+const TRACKS = [
+  { name: 'Chill', bpm: 92, bars: 28, key: 57, minor: true, four: false, arp: false, lead: 'triangle' },
+  { name: 'Pop', bpm: 118, bars: 32, key: 60, minor: false, four: false, arp: true, lead: 'square' },
+  { name: 'Hype', bpm: 140, bars: 36, key: 53, minor: true, four: true, arp: true, lead: 'sawtooth' },
+];
+async function makeTrack(def) {
+  const sr = 44100, spb = 60 / def.bpm, dur = 0.5 + def.bars * 4 * spb + 1.5;
+  const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const oc = new OC(2, Math.ceil(sr * dur), sr);
+  const master = oc.createGain(); master.gain.value = 0.55; master.connect(oc.destination);
+  const noise = oc.createBuffer(1, sr, sr); const nd = noise.getChannelData(0); for (let i = 0; i < sr; i++) nd[i] = Math.random() * 2 - 1;
+  const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+  const env = (g, t, peak, len, att = 0.005) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + len); };
+  function kick(t) { const o = oc.createOscillator(), g = oc.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12); env(g, t, 1, 0.38, 0.002); o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.4); }
+  function snare(t) { const s = oc.createBufferSource(); s.buffer = noise; const f = oc.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1300; const g = oc.createGain(); env(g, t, 0.45, 0.2, 0.002); s.connect(f); f.connect(g); g.connect(master); s.start(t, Math.random() * 0.5); s.stop(t + 0.22); }
+  function hat(t, v) { const s = oc.createBufferSource(); s.buffer = noise; const f = oc.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7500; const g = oc.createGain(); env(g, t, v, 0.05, 0.001); s.connect(f); f.connect(g); g.connect(master); s.start(t, Math.random() * 0.5); s.stop(t + 0.06); }
+  function tone(t, m, len, type, vol, cut) { const o = oc.createOscillator(), g = oc.createGain(); o.type = type; o.frequency.value = mf(m); env(g, t, vol, len, 0.01); let node = o; if (cut) { const f = oc.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut; o.connect(f); node = f; } node.connect(g); g.connect(master); o.start(t); o.stop(t + len + 0.02); }
+  const prog = def.minor ? [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -2, 2]] : [[0, 4, 7], [-5, -1, 2], [-3, 0, 4], [-7, -3, 0]];
+  for (let bar = 0; bar < def.bars; bar++) {
+    const t0 = 0.5 + bar * 4 * spb, ch = prog[bar % 4].map(x => x + def.key), root = ch[0] - 12;
+    const outro = bar >= def.bars - 2;
+    for (let b = 0; b < 4; b++) {
+      const t = t0 + b * spb;
+      if (def.four || b === 0 || b === 2 || (b === 3 && bar % 2 === 1 && !def.minor)) kick(t);
+      if (bar >= 2 && (b === 1 || b === 3)) snare(t);
+      if (bar >= 1) { hat(t, 0.12); hat(t + spb / 2, 0.2); if (def.four) { hat(t + spb / 4, 0.06); hat(t + spb * 3 / 4, 0.06); } }
+      if (bar >= 2 && !outro) { tone(t, root - 12, spb * 0.45, 'sawtooth', 0.22, 400); tone(t + spb / 2, root - (b % 2 ? 0 : 12), spb * 0.4, 'sawtooth', 0.16, 400); }
+    }
+    if (bar >= 2) for (const m of ch) tone(t0, m, 4 * spb * 0.95, 'triangle', 0.05);
+    if (def.arp && bar >= 4 && !outro) {
+      const notes = [ch[0] + 12, ch[1] + 12, ch[2] + 12, ch[1] + 12, ch[0] + 24, ch[2] + 12, ch[1] + 12, ch[2] + 12];
+      for (let i = 0; i < 8; i++) tone(t0 + i * spb / 2, notes[i], spb * 0.4, def.lead, 0.035, 2600);
+    }
+  }
+  return await new Promise((res, rej) => { const p = oc.startRendering(); if (p && p.then) p.then(res, rej); else oc.oncomplete = e => res(e.renderedBuffer); });
+}
+
+// ---------- music playback ----------
+function playMusic() {
+  ensureAudio();
+  stopMusic(0);
+  musicGain = actx.createGain(); musicGain.gain.value = 0.9; musicGain.connect(actx.destination);
+  src = actx.createBufferSource(); src.buffer = song.buffer; src.connect(musicGain);
+  songStart = actx.currentTime + 0.15;
+  src.start(songStart);
+  musicOn = true;
+}
+function stopMusic(fade) {
+  if (!src) return;
+  try {
+    const now = actx.currentTime;
+    if (fade > 0) { musicGain.gain.setTargetAtTime(0, now, fade / 3); src.stop(now + fade); } else src.stop();
+  } catch(e) {}
+  src = null; musicOn = false;
+}
+function finishSong() {
+  songEnded = true; flight = null;
+  guy.state = 'stand'; guy.angle = 0;
+  addText(W / 2, H * 0.32, 'SONG COMPLETE! 🎉', '#ffcc00', 32, 2.5);
+  flash = 0.3;
+  setTimeout(() => { stopMusic(1.2); showResults(true); }, 1600);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && playing && mode === 'music' && guy.state !== 'crash') { startCrash(''); }
+});
+
+// ---------- game flow ----------
 function startGame() {
-  score = 0; scoreEl.textContent = 0; fx = []; texts = [];
+  ensureAudio();
+  if (mode === 'music' && !song) return;
+  score = 0; perfects = 0; scoreEl.textContent = 0; fx = []; texts = [];
   guy.x = W / 2; guy.y = GROUND - FEET; guy.angle = 0; guy.tuck = 0; guy.state = 'stand'; flight = null; crash = null;
-  document.getElementById('start').classList.add('hidden');
-  document.getElementById('over').classList.add('hidden');
+  landIdx = -1; beatPtr = 0; songEnded = false;
+  $('start').classList.add('hidden'); $('over').classList.add('hidden');
   playing = true;
-  addText(W / 2, GROUND - 160, 'Tap him!', '#2b1d3a', 24);
+  if (mode === 'music') { playMusic(); addText(W / 2, GROUND - 170, 'Get ready…', '#2b1d3a', 26, 1.6); bestEl.textContent = song.name; }
+  else { addText(W / 2, GROUND - 160, 'Tap him!', '#2b1d3a', 24); bestEl.textContent = getBest() ? 'Best: ' + getBest() : ''; }
 }
 
-function gameOver() {
+function showResults(complete) {
   playing = false;
-  const best = Math.max(getBest(), score); setBest(best);
-  bestEl.textContent = 'Best: ' + best;
-  document.getElementById('final').textContent = score;
-  document.getElementById('bestOver').textContent = score >= best && score > 0 ? '🏆 New best!' : 'Best: ' + best;
-  document.getElementById('over').classList.remove('hidden');
+  if (mode === 'music') {
+    const pct = complete ? 100 : Math.round(Math.min(1, Math.max(0, songTime() / song.duration)) * 100);
+    $('overTitle').textContent = complete ? 'Song complete! 🎉' : 'KO! 💫';
+    $('final').textContent = score;
+    $('overLine1').textContent = `${score} beats hit · ${perfects} perfect`;
+    $('overLine2').textContent = complete ? song.name : `Made it ${pct}% through ${song.name}`;
+  } else {
+    const best = Math.max(getBest(), score); setBest(best);
+    bestEl.textContent = 'Best: ' + best;
+    $('overTitle').textContent = 'KO! 💫';
+    $('final').textContent = score;
+    $('overLine1').textContent = score >= best && score > 0 ? '🏆 New best!' : 'Best: ' + best;
+    $('overLine2').textContent = '';
+  }
+  $('over').classList.remove('hidden');
 }
 
-// ---------- drawing ----------
+// ---------- drawing: guy ----------
 function lerp(a, b, t) { return a + (b - a) * t; }
-function lowestOffset(a) { // how far below the body center the lowest point sits
-  const c = Math.cos(a), s = Math.abs(Math.sin(a));
-  return Math.max(FEET * c, -HEADTOP * c) + 12 * s;
-}
+function lowestOffset(a) { const c = Math.cos(a), s = Math.abs(Math.sin(a)); return Math.max(FEET * c, -HEADTOP * c) + 12 * s; }
 
 function drawGuy(ko) {
   const t = guy.tuck;
   ctx.save();
-  ctx.translate(guy.x, guy.y);
-  ctx.rotate(guy.angle);
-  ctx.scale(guy.facing, 1);
+  ctx.translate(guy.x, guy.y); ctx.rotate(guy.angle); ctx.scale(guy.facing, 1);
   if (alt > 0.6) { ctx.shadowColor = `rgba(255,255,255,${Math.min(0.9, (alt - 0.6) * 2.5)})`; ctx.shadowBlur = 10; }
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 7;
-
   const sh = { x: 0, y: -28 }, hip = { x: 0, y: 12 };
-  // legs
   const legs = [
     { k: { x: lerp(7, 24, t), y: lerp(34, 16, t) }, f: { x: lerp(11, 10, t), y: lerp(FEET, 38, t) } },
     { k: { x: lerp(-5, 18, t), y: lerp(34, 22, t) }, f: { x: lerp(-9, 4, t), y: lerp(FEET, 44, t) } },
   ];
-  ctx.strokeStyle = '#3a6fd8';
+  ctx.strokeStyle = '#3a6fd8'; ctx.lineWidth = 7;
   for (const l of legs) { ctx.beginPath(); ctx.moveTo(hip.x, hip.y); ctx.lineTo(l.k.x, l.k.y); ctx.lineTo(l.f.x, l.f.y); ctx.stroke(); }
-  // shoes
   ctx.fillStyle = '#2b1d3a';
   for (const l of legs) { ctx.beginPath(); ctx.ellipse(l.f.x + 5, l.f.y + 2, 8, 4.5, 0, 0, Math.PI * 2); ctx.fill(); }
-  // torso (shirt)
   ctx.strokeStyle = '#e2703a'; ctx.lineWidth = 16;
   ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(hip.x, hip.y); ctx.stroke();
-  // arms
   ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 6;
   const arms = ko
     ? [{ e: { x: 16, y: -40 }, h: { x: 26, y: -54 } }, { e: { x: -14, y: -40 }, h: { x: -22, y: -56 } }]
@@ -218,14 +515,11 @@ function drawGuy(ko) {
       { e: { x: lerp(-8, 16, t), y: lerp(-8, -6, t) }, h: { x: lerp(-12, 20, t), y: lerp(12, 20, t) } },
     ];
   for (const a of arms) { ctx.beginPath(); ctx.moveTo(sh.x, sh.y + 2); ctx.lineTo(a.e.x, a.e.y); ctx.lineTo(a.h.x, a.h.y); ctx.stroke(); }
-  // head
   ctx.fillStyle = '#ffd2a8'; ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 4;
   ctx.beginPath(); ctx.arc(0, -48, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  // cap
-  ctx.fillStyle = '#e2703a';
+  ctx.fillStyle = mode === 'music' ? '#2fa84f' : '#e2703a';
   ctx.beginPath(); ctx.arc(0, -50, 15, Math.PI, 0); ctx.fill(); ctx.stroke();
   ctx.fillRect(2, -52, 16, 4);
-  // face
   ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 2.5;
   if (ko) {
     for (const ex of [4, 10]) { ctx.beginPath(); ctx.moveTo(ex - 2.5, -47.5); ctx.lineTo(ex + 2.5, -42.5); ctx.moveTo(ex + 2.5, -47.5); ctx.lineTo(ex - 2.5, -42.5); ctx.stroke(); }
@@ -250,8 +544,8 @@ function drawStars(cx, cy, time) {
 }
 
 // ---------- altitude / sky ----------
-let alt = 0;                 // 0 = ground level, 1 = space (score 25), >1 deeper space
-const SKY = [                // [alt, top, bottom]
+let alt = 0;
+const SKY = [
   [0.00, '#ffd59e', '#ffeedd'],
   [0.35, '#7cc8ff', '#d6f0ff'],
   [0.60, '#3d6fd6', '#8fc0f2'],
@@ -269,12 +563,9 @@ function skyAt(a, idx) {
   return SKY[SKY.length - 1][idx + 1];
 }
 const clamp01 = v => Math.min(1, Math.max(0, v));
-
 const bgStars = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + 0.3, tw: Math.random() * 6, sp: Math.random() * 0.5 + 0.2 }));
 let clouds = Array.from({ length: 6 }, () => newCloud(Math.random()));
 function newCloud(y) { return { x: Math.random(), y: y ?? -0.15, s: 0.6 + Math.random() * 0.9, sp: 0.6 + Math.random() * 0.8 }; }
-
-const MILESTONES = { 8: 'Climbing! ☁️', 15: 'Above the clouds!', 21: 'Leaving the sky...', 25: 'SPACE! 🚀', 40: 'Deep space 🌌' };
 
 function drawCloud(x, y, s, a) {
   ctx.globalAlpha = a; ctx.fillStyle = '#fff';
@@ -287,12 +578,10 @@ function drawCloud(x, y, s, a) {
 
 function drawScene(time, dt) {
   const a = clamp01(alt), deep = clamp01(alt - 1);
-  // sky gradient
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, skyAt(a, 0)); g.addColorStop(1, skyAt(a, 1));
   ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
 
-  // deep-space nebula
   if (deep > 0) {
     const n = ctx.createRadialGradient(W * 0.25, H * 0.3, 10, W * 0.25, H * 0.3, W * 0.9);
     n.addColorStop(0, `rgba(170,60,220,${0.35 * deep})`); n.addColorStop(1, 'rgba(170,60,220,0)');
@@ -302,21 +591,19 @@ function drawScene(time, dt) {
     ctx.fillStyle = n2; ctx.fillRect(0, 0, W, H);
   }
 
-  // stars (fade in high up, drift down = rising feel)
   const starA = clamp01((a - 0.55) / 0.4);
   if (starA > 0) {
     ctx.fillStyle = '#fff';
     for (const s of bgStars) {
       s.y += s.sp * dt * 0.02 * (1 + deep * 2); if (s.y > 1) { s.y = 0; s.x = Math.random(); }
-      ctx.globalAlpha = starA * (0.55 + Math.sin(time * 2 + s.tw) * 0.45);
-      ctx.beginPath(); ctx.arc(s.x * W, s.y * GROUND, s.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = starA * (0.55 + Math.sin(time * 2 + s.tw) * 0.45) * (1 + pulse * 0.5);
+      ctx.beginPath(); ctx.arc(s.x * W, s.y * GROUND, s.r * (1 + pulse * 0.6), 0, Math.PI * 2); ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
-  // sun -> fades out, ringed planet fades in
   const sunA = 1 - clamp01((a - 0.5) / 0.3);
-  if (sunA > 0) { ctx.globalAlpha = sunA; ctx.fillStyle = '#ffb35c'; ctx.beginPath(); ctx.arc(W * 0.8, H * 0.2 + a * 120, 46, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  if (sunA > 0) { ctx.globalAlpha = sunA; ctx.fillStyle = '#ffb35c'; ctx.beginPath(); ctx.arc(W * 0.8, H * 0.2 + a * 120, 46 + pulse * 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
   const planA = clamp01((a - 0.85) / 0.15);
   if (planA > 0) {
     const px = W * 0.78, py = H * 0.2 + Math.sin(time * 0.3) * 6;
@@ -329,7 +616,6 @@ function drawScene(time, dt) {
     ctx.globalAlpha = 1;
   }
 
-  // clouds rushing downward (only in the climbing zone)
   const cloudA = clamp01(a / 0.15) * (1 - clamp01((a - 0.7) / 0.2));
   const climb = 0.05 + a * 0.35;
   for (const c of clouds) {
@@ -338,7 +624,6 @@ function drawScene(time, dt) {
     if (cloudA > 0) drawCloud(c.x * W - 30, c.y * GROUND, c.s, cloudA * 0.85);
   }
 
-  // hills sink away as we climb
   const hillA = 1 - clamp01(a / 0.4);
   if (hillA > 0) {
     ctx.globalAlpha = hillA; ctx.fillStyle = '#f2b98a';
@@ -348,7 +633,6 @@ function drawScene(time, dt) {
     ctx.lineTo(W + 20, GROUND + 20); ctx.fill(); ctx.globalAlpha = 1;
   }
 
-  // Earth curve far below once in space
   const earthA = clamp01((a - 0.7) / 0.3);
   if (earthA > 0) {
     const R = W * 2.2, cy = GROUND + R - 40 + (1 - earthA) * 120 + deep * 60;
@@ -362,7 +646,6 @@ function drawScene(time, dt) {
     ctx.globalAlpha = 1;
   }
 
-  // ground: full field -> floating platform in space
   const plat = clamp01((a - 0.6) / 0.35);
   const groundH = lerp(H - GROUND + 20, 34, plat);
   const inset = lerp(-20, 30, plat);
@@ -370,7 +653,6 @@ function drawScene(time, dt) {
   if (plat > 0) { ctx.beginPath(); ctx.moveTo(inset, GROUND); ctx.lineTo(W - inset, GROUND); ctx.lineTo(W - inset - 30 * plat, GROUND + groundH); ctx.lineTo(inset + 30 * plat, GROUND + groundH); ctx.fill(); }
   else ctx.fillRect(inset, GROUND, W - inset * 2, groundH);
   ctx.fillStyle = mix('#5fa851', '#b9bcd6', plat); ctx.fillRect(inset, GROUND, W - inset * 2, 8);
-  // thrusters under platform
   if (plat > 0.5) {
     for (const tx of [W * 0.3, W * 0.7]) {
       const fl = 14 + Math.sin(time * 30 + tx) * 5;
@@ -380,36 +662,49 @@ function drawScene(time, dt) {
       ctx.globalAlpha = 1;
     }
   }
-  // mat
-  ctx.fillStyle = '#4b8fe0'; ctx.fillRect(inset + 20, GROUND - 2, W - inset * 2 - 40, 10);
+  // mat (pulses on the beat in music mode)
+  ctx.fillStyle = pulse > 0 ? mix('#4b8fe0', '#7dffb0', pulse) : '#4b8fe0';
+  ctx.fillRect(inset + 20, GROUND - 2 - pulse * 3, W - inset * 2 - 40, 10 + pulse * 3);
 }
 
 // ---------- loop ----------
 let last = performance.now(), clock = 0;
 function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.033); last = now; clock += dt;
-  alt += (score / 25 - alt) * Math.min(1, dt * 1.5);
-  document.getElementById('best').style.color = alt > 0.6 ? '#fff' : '';
+  const music = mode === 'music' && song && playing;
+  const st = music ? songTime() : 0;
+
+  // altitude target
+  const altTarget = music ? Math.min(1.3, Math.max(0, st / song.duration) * 1.3) : (mode === 'music' && song && !playing && guy.state !== 'crash' ? alt : score / 25);
+  alt += (altTarget - alt) * Math.min(1, dt * 1.5);
+  bestEl.style.color = alt > 0.6 ? '#fff' : '';
+
+  // beat pulse
+  pulse = Math.max(0, pulse - dt * 5);
+  if (music && musicOn) {
+    while (beatPtr < song.beats.length && song.beats[beatPtr] <= st) { pulse = 1; beatPtr++; }
+    scoreEl.style.transform = `scale(${1 + pulse * 0.08})`;
+  } else scoreEl.style.transform = '';
 
   if (guy.state === 'stand') {
     guy.tuck = Math.max(0, guy.tuck - dt * 6);
     guy.angle = 0;
-    guy.y = GROUND - FEET + Math.sin(clock * 3) * 1.5;
+    guy.y = GROUND - FEET + Math.sin(clock * 3) * 1.5 - pulse * 3;
+    if (music && musicOn && !songEnded && landIdx === -1 && song.landings.length && st >= song.landings[0] - song.flipDur) launch();
   } else if (guy.state === 'fly') {
-    flight.t += dt;
-    let p = flight.t / flight.T;
-    const pc = Math.min(p, 1);
+    if (music) flight.t = st - flight.t0; else flight.t += dt;
+    const p = flight.t / flight.T;
+    const pc = Math.min(Math.max(p, 0), 1);
     guy.x = lerp(flight.x0, flight.x1, pc);
     guy.y = Math.min(lerp(flight.y0, GROUND - FEET, pc) - flight.Hh * 4 * pc * (1 - pc), GROUND - FEET);
     guy.angle = flight.a0 - guy.facing * Math.PI * 2 * pc;
     guy.tuck = Math.sin(Math.PI * Math.min(1, pc * 1.15));
-    if (p > 1.05) { dust(guy.x, GROUND); startCrash('Too late!'); }
+    if (p > 1 + flight.late) { dust(guy.x, GROUND); startCrash('Too late!'); }
   } else if (guy.state === 'crash') {
     crash.t += dt;
     const dir = crash.dir;
-    if (crash.t < 0.22) {                         // over-rotate onto head
-      const k = crash.t / 0.22;
-      guy.angle = crash.a0 - dir * Math.PI * k;
+    if (crash.t < 0.22) {
+      guy.angle = crash.a0 - dir * Math.PI * (crash.t / 0.22);
       guy.tuck = Math.max(0, guy.tuck - dt * 8);
     } else if (!crash.hit) {
       crash.hit = true; shake = 16; dust(guy.x, GROUND, 18);
@@ -417,38 +712,34 @@ function loop(now) {
       if (navigator.vibrate) try { navigator.vibrate(150); } catch(e) {}
       addText(guy.x, GROUND - 120, 'BONK!', '#2b1d3a', 34);
       crash.a1 = guy.angle;
-    } else if (crash.t < 0.7) {                   // tip over to lie flat
+    } else if (crash.t < 0.7) {
       const k = Math.min(1, (crash.t - 0.22) / 0.4);
-      const e = 1 - Math.pow(1 - k, 3);
-      guy.angle = crash.a1 - dir * (Math.PI / 2) * e;
-    } else if (!crash.done && crash.t > 1.4) { crash.done = true; gameOver(); }
+      guy.angle = crash.a1 - dir * (Math.PI / 2) * (1 - Math.pow(1 - k, 3));
+    } else if (!crash.done && crash.t > 1.4) { crash.done = true; showResults(false); }
     guy.y = GROUND - lowestOffset(guy.angle);
   }
 
-  // shake
   ctx.save();
   if (shake > 0) { ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); shake = Math.max(0, shake - dt * 50); }
   drawScene(clock, dt);
 
-  // shadow
   const hgt = Math.max(0, (GROUND - FEET) - guy.y);
   ctx.fillStyle = 'rgba(0,0,0,0.15)';
   ctx.beginPath(); ctx.ellipse(guy.x, GROUND + 3, Math.max(10, 30 - hgt * 0.05), 6, 0, 0, Math.PI * 2); ctx.fill();
 
-  // approach ring
   if (guy.state === 'fly') {
     const p = progress(), w = flight.w;
-    const start = 1 - w - 0.3;
+    const start = Math.max(0, 1 - w - 0.3);
     if (p > start) {
       const inWin = p >= 1 - w;
       const k = Math.min(1, (p - start) / (1 - start));
       const r = lerp(flight.R * 2.6, flight.R * 0.9, k);
       ctx.lineWidth = inWin ? 6 : 3;
       ctx.strokeStyle = inWin ? '#2fa84f' : (alt > 0.6 ? 'rgba(255,255,255,0.6)' : 'rgba(43,29,58,0.45)');
-      ctx.beginPath(); ctx.arc(guy.x, guy.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(guy.x, guy.y, Math.max(1, r), 0, Math.PI * 2); ctx.stroke();
       if (inWin) { ctx.fillStyle = 'rgba(47,168,79,0.12)'; ctx.beginPath(); ctx.arc(guy.x, guy.y, flight.R, 0, Math.PI * 2); ctx.fill(); }
     }
-  } else if (guy.state === 'stand' && playing) {
+  } else if (guy.state === 'stand' && playing && mode === 'classic') {
     const r = 58 + Math.sin(clock * 5) * 5;
     ctx.strokeStyle = 'rgba(226,112,58,0.6)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
     ctx.beginPath(); ctx.arc(guy.x, guy.y, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
@@ -457,13 +748,9 @@ function loop(now) {
   drawGuy(guy.state === 'crash' && crash.hit);
 
   if (guy.state === 'crash' && crash.hit) {
-    // head position for stars
-    const hx = guy.x + Math.sin(guy.angle) * 48;
-    const hy = guy.y - Math.cos(guy.angle) * 48;
-    drawStars(hx, hy - 22, clock);
+    drawStars(guy.x + Math.sin(guy.angle) * 48, guy.y - Math.cos(guy.angle) * 48 - 22, clock);
   }
 
-  // fx
   for (let i = fx.length - 1; i >= 0; i--) {
     const f = fx[i]; f.life -= dt;
     if (f.life <= 0) { fx.splice(i, 1); continue; }
@@ -479,7 +766,7 @@ function loop(now) {
   ctx.globalAlpha = 1;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (let i = texts.length - 1; i >= 0; i--) {
-    const t = texts[i]; t.life -= dt; t.y -= 40 * dt;
+    const t = texts[i]; t.life -= dt; t.y -= 40 * dt * (t.life > 1 ? 0.3 : 1);
     if (t.life <= 0) { texts.splice(i, 1); continue; }
     ctx.globalAlpha = Math.min(1, t.life * 2);
     ctx.font = `700 ${t.size}px Fredoka, sans-serif`;
@@ -489,14 +776,20 @@ function loop(now) {
   ctx.globalAlpha = 1;
   ctx.restore();
 
-  if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 2})`; ctx.fillRect(0, 0, W, H); flash -= dt; }
+  // song progress bar
+  if (music) {
+    const k = clamp01(st / song.duration);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(0, 0, W, 5);
+    ctx.fillStyle = '#2fa84f'; ctx.fillRect(0, 0, W * k, 5);
+  }
 
+  if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 2})`; ctx.fillRect(0, 0, W, H); flash -= dt; }
   requestAnimationFrame(loop);
 }
 
 window.addEventListener('resize', resize);
 resize();
-const b0 = getBest(); if (b0) bestEl.textContent = 'Best: ' + b0;
+setMode('classic');
 requestAnimationFrame(loop);
 </script>
 </body>
