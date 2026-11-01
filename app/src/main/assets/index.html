@@ -48,6 +48,13 @@
   .card button.using { background: #2fa84f; color: #fff; }
   .card button:disabled { opacity: .5; }
   .card .need { font-size: 12px; opacity: .7; min-height: 14px; }
+  .seg button { padding: 8px 14px; }
+  #voicePanel { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 330px; }
+  .vmeter { position: relative; width: 100%; height: 26px; border: 3px solid #2b1d3a; border-radius: 999px; overflow: hidden;
+    background: linear-gradient(90deg, #2fa84f 0%, #8fd14f 45%, #ffcc33 70%, #ff7a33 85%, #e23b3b 100%); }
+  .vfill { position: absolute; top: 0; right: 0; bottom: 0; left: 0%; background: #e9e2d6; transition: left 0.05s linear; }
+  .vthr { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #fff; box-shadow: 0 0 0 2px #2b1d3a; }
+  .vmeter.hit { box-shadow: 0 0 0 4px #2fa84f; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 3px solid #e2703a; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -60,11 +67,19 @@
   <div class="screen" id="start">
     <div class="coins">🪙 <span class="coinCount">0</span></div>
     <h1>FLIP<br>GUY</h1>
-    <div class="seg"><button id="mClassic" class="on">Classic</button><button id="mMusic">Music 🎵</button></div>
+    <div class="seg"><button id="mClassic" class="on">Classic</button><button id="mMusic">Music 🎵</button><button id="mVoice">Voice 🎤</button></div>
 
     <div id="classicPanel">
       <p>Tap the guy to make him backflip. Tap him again when the ring turns <b style="color:#2fa84f">green</b> to keep flipping.</p>
       <p class="small" style="margin-top:6px">It gets faster the higher you go. Tap too early or too late and he lands on his head!</p>
+    </div>
+
+    <div id="voicePanel" class="hidden">
+      <p>No tapping! Shout <b>“HUP!”</b>, clap or meow when the ring turns <b style="color:#2fa84f">green</b>.</p>
+      <div class="vmeter"><div class="vfill" id="vFill"></div><div class="vthr" id="vThr"></div></div>
+      <div id="voiceStatus" class="small">Tap Voice 🎤 to turn on the mic</div>
+      <div class="sync">Sensitivity <button id="sensMinus">−</button><span id="sensVal">5</span><button id="sensPlus">+</button></div>
+      <p class="small">Get loud enough to pass the white line. In noisy places, lower the sensitivity. Earphones stop the game sounds from setting it off.</p>
     </div>
 
     <div id="musicPanel" class="hidden">
@@ -115,8 +130,9 @@ let W, H, DPR, GROUND;
 let FEET = 56, HEADTOP = 64, HALF = 12;   // figure size (changes for cats)
 function applyDims() { const d = (typeof avatar === 'function' && avatar().dims) || [56, 64, 12]; FEET = d[0]; HEADTOP = d[1]; HALF = d[2]; }
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e) { return null; } }
-function getBest() { return +store('flipGuyBest') || 0; }
-function setBest(v) { store('flipGuyBest', v); }
+function bestKey() { return mode === 'voice' ? 'flipGuyBestVoice' : 'flipGuyBest'; }
+function getBest() { return +store(bestKey()) || 0; }
+function setBest(v) { store(bestKey(), v); }
 
 // ---------- audio ----------
 let actx = null;
@@ -195,7 +211,7 @@ function launch() {
   const a0n = a0 > Math.PI ? a0 - Math.PI * 2 : a0; slosh.a += a0n - guy.angle; guy.angle = a0n;
   flight = { x0: guy.x, y0: guy.y, x1, T, Hh: d.Hh, a0: a0n, t: 0, t0, land, w, late, perf, R: d.R };
   guy.state = 'fly';
-  if (mode === 'classic' && !isCat()) beep(380 + Math.min(score, 30) * 12, 0.07, 'triangle');
+  if (mode !== 'music' && !hasSound()) beep(380 + Math.min(score, 30) * 12, 0.07, 'triangle');
 }
 
 function progress() { return flight ? flight.t / flight.T : 0; }
@@ -227,12 +243,15 @@ function tap(e) {
   if (!playing) return;
   e.preventDefault();
   ensureAudio();
+  if (mode === 'voice') return;          // voice mode: no touching!
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
   const R = flight ? flight.R : diff().R;
-  const onGuy = Math.hypot(px - guy.x, py - guy.y) < R + 10;
+  act(Math.hypot(px - guy.x, py - guy.y) < R + 10, px, py);
+}
+function act(onGuy, px, py) {
 
-  if (guy.state === 'stand') { if (onGuy && mode === 'classic') { if (isCat()) meow(); launch(); } return; }
+  if (guy.state === 'stand') { if (onGuy && mode !== 'music') { avatarSound(); launch(); } return; }
   if (guy.state !== 'fly') return;
 
   const p = progress();
@@ -242,19 +261,19 @@ function tap(e) {
   let perfect, gain;
   if (mode === 'music') { perfect = Math.abs(p - 1) < flight.perf; gain = 1; if (perfect) perfects++; }
   else { perfect = (p > 0.97 && p < 1.03) || Math.abs(p - (1 - flight.w / 2)) < 0.03; gain = perfect ? 2 : 1; }
-  if (isCat()) meow();
+  avatarSound();
   const before = score;
   score += gain;
   scoreEl.textContent = score;
   ringFx(guy.x, guy.y, perfect ? '#ffcc00' : '#2fa84f');
   const label = mode === 'music' ? (perfect ? 'PERFECT' : 'Good') : (perfect ? 'PERFECT +2' : '+1');
   addText(guy.x, guy.y - 80, label, perfect ? '#e2a400' : '#2fa84f', perfect ? 28 : 24);
-  if (mode === 'classic') {
+  if (mode !== 'music') {
     for (const m in MILESTONES) if (before < +m && score >= +m) {
       addText(W / 2, H * 0.32, MILESTONES[m], '#ffcc00', 34, 2);
       if (+m === 25) { flash = 0.3; beep(523, 0.15, 'triangle'); setTimeout(() => beep(784, 0.25, 'triangle'), 150); }
     }
-    if (perfect && !isCat()) beep(990, 0.12, 'square', 0.08);
+    if (perfect && !hasSound()) beep(990, 0.12, 'square', 0.08);
   }
   if (perfect) flash = Math.max(flash, 0.12);
   launch();
@@ -266,13 +285,17 @@ function setMode(m) {
   mode = m;
   $('mClassic').classList.toggle('on', m === 'classic');
   $('mMusic').classList.toggle('on', m === 'music');
+  $('mVoice').classList.toggle('on', m === 'voice');
   $('classicPanel').classList.toggle('hidden', m !== 'classic');
   $('musicPanel').classList.toggle('hidden', m !== 'music');
-  $('playBtn').disabled = m === 'music' && !song;
-  bestEl.textContent = m === 'classic' && getBest() ? 'Best: ' + getBest() : '';
+  $('voicePanel').classList.toggle('hidden', m !== 'voice');
+  $('playBtn').disabled = (m === 'music' && !song) || (m === 'voice' && !mic.on);
+  bestEl.textContent = m !== 'music' && getBest() ? 'Best: ' + getBest() : '';
+  if (m === 'voice') startMic(); else stopMic();
 }
 $('mClassic').onclick = () => setMode('classic');
 $('mMusic').onclick = () => setMode('music');
+$('mVoice').onclick = () => { ensureAudio(); setMode('voice'); };
 $('playBtn').onclick = startGame;
 $('againBtn').onclick = startGame;
 $('menuBtn').onclick = () => { $('over').classList.add('hidden'); $('start').classList.remove('hidden'); setMode(mode); };
@@ -495,7 +518,7 @@ function startGame() {
   $('start').classList.add('hidden'); $('over').classList.add('hidden');
   playing = true;
   if (mode === 'music') { playMusic(); addText(W / 2, GROUND - 170, 'Get ready…', '#2b1d3a', 26, 1.6); bestEl.textContent = song.name; }
-  else { addText(W / 2, GROUND - 160, 'Tap him!', '#2b1d3a', 24); bestEl.textContent = getBest() ? 'Best: ' + getBest() : ''; }
+  else { addText(W / 2, GROUND - 160, mode === 'voice' ? 'Shout “HUP!”' : 'Tap him!', '#2b1d3a', 24); bestEl.textContent = getBest() ? 'Best: ' + getBest() : ''; }
 }
 
 function showResults(complete) {
@@ -880,18 +903,17 @@ function drawTrouble(c, av, t, ko) {
     line(c, [{ x: sh.x, y: sh.y + 2 }, a.e, a.h], skin, 6);
     if (i === 0) { const bx = lerp(a.e.x, a.h.x, 0.75), by = lerp(a.e.y, a.h.y, 0.75); c.save(); c.translate(bx, by); c.rotate(Math.atan2(a.h.y - a.e.y, a.h.x - a.e.x) + Math.PI / 2); rrect(c, -4.5, -2, 9, 4, 1.5); shape(c, '#ffffff', 1.5); c.fillStyle = '#ff6b6b'; c.fillRect(-1, -1, 2, 2); c.restore(); }
   });
-  c.fillStyle = '#eef0f4'; c.strokeStyle = OUT; c.lineWidth = 2;
-  c.beginPath(); c.ellipse(-12, -46, 6, 9, -0.2, 0, Math.PI * 2); c.fill(); c.stroke();          // white hair at the back
+  c.fillStyle = '#1d1a22'; c.strokeStyle = OUT; c.lineWidth = 2;
+  c.beginPath(); c.ellipse(-12, -46, 6, 9, -0.2, 0, Math.PI * 2); c.fill(); c.stroke();          // black hair at the back
   c.beginPath(); c.arc(0, -48, 15, 0, Math.PI * 2); shape(c, skin, 3.5);
-  c.fillStyle = '#eef0f4'; c.beginPath(); c.ellipse(-12, -45, 4, 7, -0.2, -Math.PI / 2, Math.PI / 2); c.fill();
-  c.strokeStyle = '#e0a985'; c.lineWidth = 1.5; c.beginPath(); c.arc(-1, -56, 5, Math.PI * 1.1, Math.PI * 1.7); c.stroke(); // shiny bald top
+  c.fillStyle = '#1d1a22'; c.beginPath(); c.ellipse(-12, -45, 4, 7, -0.2, -Math.PI / 2, Math.PI / 2); c.fill();
+  c.beginPath(); c.arc(0, -48, 15, Math.PI * 0.62, Math.PI * 1.12); c.lineTo(-6, -50); c.closePath(); c.fill();   // hair round the back & sides
+  c.strokeStyle = '#e0a985'; c.lineWidth = 1.5; c.beginPath(); c.arc(2, -56, 5, Math.PI * 1.1, Math.PI * 1.7); c.stroke(); // shiny bald top
   if (ko) eyesKO(c, [4, 10], -48);
   else {
     c.fillStyle = OUT; c.beginPath(); c.arc(7, -48, 2, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#c9ccd6'; c.lineWidth = 3; c.beginPath(); c.moveTo(3, -53); c.lineTo(11, -54); c.stroke();      // bushy brow
+    c.strokeStyle = OUT; c.lineWidth = 2; c.beginPath(); c.moveTo(4, -40); c.quadraticCurveTo(8, -42, 12, -40); c.stroke();   // tired mouth
   }
-  c.fillStyle = '#eef0f4'; c.strokeStyle = OUT; c.lineWidth = 1.6;
-  c.beginPath(); c.moveTo(3, -42); c.quadraticCurveTo(9, -46, 16, -42); c.quadraticCurveTo(15, -38, 11, -39); c.quadraticCurveTo(9, -41, 7, -39); c.quadraticCurveTo(3, -38, 3, -42); c.closePath(); c.fill(); c.stroke();  // mustache
 }
 
 // -- Seji: black bowl cut, magenta shirt, holding a keyboard --
@@ -927,6 +949,134 @@ function drawSeji(c, av, t, ko) {
 
 const EXTRA_DRAW = { bottle: drawBottle, chair: drawChair, toilet: drawToilet, skater: drawSkater, trouble: drawTrouble, seji: drawSeji };
 
+
+// ---------- voice input ----------
+const mic = { on: false, stream: null, an: null, buf: null, level: 0, peak: 0, armed: true, last: 0, hit: 0 };
+let sens = +store('flipGuySens') || 5;          // 1..9, higher = easier to trigger
+function thr() { return 0.86 - sens * 0.05; }   // trigger level on a 0..1 meter (−60 dB .. 0 dB)
+function showSens() { $('sensVal').textContent = sens; $('vThr').style.left = (thr() * 100) + '%'; }
+$('sensMinus').onclick = () => { sens = Math.max(1, sens - 1); store('flipGuySens', sens); showSens(); };
+$('sensPlus').onclick = () => { sens = Math.min(9, sens + 1); store('flipGuySens', sens); showSens(); };
+showSens();
+async function startMic() {
+  if (mic.on) return;
+  const st = $('voiceStatus');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { st.textContent = 'Voice mode needs the Android app (the mic is blocked here).'; return; }
+  st.textContent = 'Asking for the microphone…';
+  try {
+    ensureAudio();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    if (mode !== 'voice') { stream.getTracks().forEach(t => t.stop()); return; }
+    const srcN = actx.createMediaStreamSource(stream);
+    const an = actx.createAnalyser(); an.fftSize = 512; srcN.connect(an);
+    Object.assign(mic, { on: true, stream, an, buf: new Float32Array(an.fftSize) });
+    st.textContent = 'Mic on! Say “HUP!” to test.';
+    $('playBtn').disabled = false;
+  } catch(e) {
+    st.textContent = 'Mic not allowed. Voice mode works in the Android app — allow the microphone when it asks.';
+  }
+}
+function stopMic() {
+  if (!mic.on) return;
+  try { mic.stream.getTracks().forEach(t => t.stop()); } catch(e) {}
+  Object.assign(mic, { on: false, stream: null, an: null, level: 0 });
+}
+function readMic(now) {
+  if (!mic.on) return;
+  mic.an.getFloatTimeDomainData(mic.buf);
+  let sum = 0; for (let i = 0; i < mic.buf.length; i++) sum += mic.buf[i] * mic.buf[i];
+  const db = 20 * Math.log10(Math.sqrt(sum / mic.buf.length) + 1e-9);
+  const lv = Math.min(1, Math.max(0, (db + 60) / 60));
+  mic.level = lv > mic.level ? lv : mic.level * 0.85 + lv * 0.15;    // fast attack, smooth release
+  mic.peak = Math.max(mic.level, mic.peak - 0.01);
+  const T = thr();
+  // trigger on a loud onset; re-arm once it gets quieter again
+  if (mic.armed && lv >= T && now - mic.last > 420) { mic.armed = false; mic.last = now; mic.hit = 1; onVoice(); }
+  else if (!mic.armed && lv < T - 0.08 && now - mic.last > 120) mic.armed = true;
+  mic.hit = Math.max(0, mic.hit - 0.06);
+  // menu meter
+  if (!$('voicePanel').classList.contains('hidden')) {
+    $('vFill').style.left = (mic.level * 100) + '%';
+    $('vFill').parentElement.classList.toggle('hit', mic.hit > 0.3);
+  }
+}
+function onVoice() {
+  if (!playing || mode !== 'voice') return;
+  act(true, guy.x, guy.y);
+}
+function drawVoiceMeter() {
+  if (mode !== 'voice' || !playing) return;
+  const x = W - 30, y = 70, h = 170, w = 16;
+  const g = ctx.createLinearGradient(0, y + h, 0, y);
+  g.addColorStop(0, '#2fa84f'); g.addColorStop(0.45, '#8fd14f'); g.addColorStop(0.7, '#ffcc33'); g.addColorStop(0.85, '#ff7a33'); g.addColorStop(1, '#e23b3b');
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'; rrect(ctx, x - 3, y - 3, w + 6, h + 6, 10); ctx.fill();
+  ctx.save(); rrect(ctx, x, y, w, h, 7); ctx.clip();
+  ctx.fillStyle = 'rgba(43,29,58,0.15)'; ctx.fillRect(x, y, w, h);
+  const lh = h * mic.level; ctx.fillStyle = g; ctx.fillRect(x, y + h - lh, w, lh);
+  ctx.restore();
+  rrect(ctx, x, y, w, h, 7); ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 2.5; ctx.stroke();
+  const ty = y + h - h * thr();
+  ctx.fillStyle = '#fff'; ctx.fillRect(x - 6, ty - 2, w + 12, 4); ctx.strokeStyle = '#2b1d3a'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 6, ty - 2, w + 12, 4);
+  ctx.font = '700 18px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🎤', x + w / 2, y + h + 20);
+  if (mic.hit > 0) { ctx.globalAlpha = mic.hit; ctx.strokeStyle = '#2fa84f'; ctx.lineWidth = 4; rrect(ctx, x - 6, y - 6, w + 12, h + 12, 12); ctx.stroke(); ctx.globalAlpha = 1; }
+}
+
+// ---------- avatar sounds ----------
+function hasSound() { return ['cat', 'bottle', 'toilet', 'trouble'].includes(avatar().kind); }
+function avatarSound() {
+  const k = avatar().kind;
+  if (k === 'cat') meow(); else if (k === 'bottle') sloshSound(); else if (k === 'toilet') fartSound(); else if (k === 'trouble') groanSound();
+}
+function noiseBuf() {
+  if (!actx._noise) { const b = actx.createBuffer(1, actx.sampleRate, actx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; actx._noise = b; }
+  return actx._noise;
+}
+function sloshSound() {
+  try {
+    if (!ensureAudio()) return;
+    const t = actx.currentTime, dur = 0.42;
+    const n = actx.createBufferSource(); n.buffer = noiseBuf();
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 6;
+    bp.frequency.setValueAtTime(380, t); bp.frequency.exponentialRampToValueAtTime(1300, t + 0.12); bp.frequency.exponentialRampToValueAtTime(420, t + 0.25); bp.frequency.exponentialRampToValueAtTime(900, t + dur);
+    const g = actx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.03); g.gain.exponentialRampToValueAtTime(0.25, t + 0.2); g.gain.exponentialRampToValueAtTime(0.5, t + 0.27); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(bp); bp.connect(g); g.connect(actx.destination); n.start(t, Math.random() * 0.5); n.stop(t + dur);
+    // little "bloop" bubbles
+    for (let i = 0; i < 3; i++) { const o = actx.createOscillator(), og = actx.createGain(), bt = t + 0.05 + i * 0.09 + Math.random() * 0.03; o.frequency.setValueAtTime(300 + Math.random() * 200, bt); o.frequency.exponentialRampToValueAtTime(900 + Math.random() * 400, bt + 0.06); og.gain.setValueAtTime(0.0001, bt); og.gain.exponentialRampToValueAtTime(0.12, bt + 0.01); og.gain.exponentialRampToValueAtTime(0.0001, bt + 0.07); o.connect(og); og.connect(actx.destination); o.start(bt); o.stop(bt + 0.08); }
+  } catch(e) {}
+}
+function fartSound() {
+  try {
+    if (!ensureAudio()) return;
+    const t = actx.currentTime, dur = 0.28 + Math.random() * 0.25;
+    const o = actx.createOscillator(); o.type = 'sawtooth';
+    const f = 70 + Math.random() * 45;
+    o.frequency.setValueAtTime(f * 1.3, t); o.frequency.exponentialRampToValueAtTime(f, t + dur * 0.3); o.frequency.exponentialRampToValueAtTime(f * 0.75, t + dur);
+    const flut = actx.createOscillator(), fg = actx.createGain(); flut.frequency.value = 22 + Math.random() * 14; fg.gain.value = 0.5;
+    const am = actx.createGain(); am.gain.value = 0.5; flut.connect(fg); fg.connect(am.gain);
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 5;
+    const n = actx.createBufferSource(); n.buffer = noiseBuf(); const nf = actx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 500; const ng = actx.createGain(); ng.gain.value = 0.25;
+    const g = actx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.02); g.gain.setValueAtTime(0.8, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(am); n.connect(nf); nf.connect(ng); ng.connect(am); am.connect(lp); lp.connect(g); g.connect(actx.destination);
+    o.start(t); flut.start(t); n.start(t, Math.random() * 0.5); o.stop(t + dur); flut.stop(t + dur); n.stop(t + dur);
+  } catch(e) {}
+}
+function groanSound() {
+  try {
+    if (!ensureAudio()) return;
+    const t = actx.currentTime, dur = 0.55;
+    const o = actx.createOscillator(); o.type = 'sawtooth';
+    const f = 105 + Math.random() * 20;
+    o.frequency.setValueAtTime(f * 1.15, t); o.frequency.linearRampToValueAtTime(f * 1.25, t + 0.12); o.frequency.exponentialRampToValueAtTime(f * 0.8, t + dur);
+    const vib = actx.createOscillator(), vg = actx.createGain(); vib.frequency.value = 5.5; vg.gain.value = 4; vib.connect(vg); vg.connect(o.frequency);
+    const g = actx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6, t + 0.06); g.gain.setValueAtTime(0.55, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const [fr, q, gv] of [[520, 6, 1], [880, 8, 0.6], [2400, 10, 0.15]]) {    // "uuuh-ohh" vowel formants
+      const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(fr * 0.8, t); bp.frequency.linearRampToValueAtTime(fr, t + dur); bp.Q.value = q;
+      const bg = actx.createGain(); bg.gain.value = gv; o.connect(bp); bp.connect(bg); bg.connect(g);
+    }
+    g.connect(actx.destination); o.start(t); vib.start(t); o.stop(t + dur); vib.stop(t + dur);
+  } catch(e) {}
+}
+
 // ---------- shop ----------
 function renderShop() {
   showCoins();
@@ -941,7 +1091,7 @@ function renderShop() {
     const btn = document.createElement('button'); const need = document.createElement('div'); need.className = 'need';
     const has = ownsAv(av.id);
     if (av.id === selected) { btn.textContent = 'Using ✓'; btn.className = 'using'; }
-    else if (has) { btn.textContent = 'Use'; btn.className = 'use'; btn.onclick = () => { selected = av.id; store('flipGuyAvatar', selected); applyDims(); if (isCat()) meow(); renderShop(); }; }
+    else if (has) { btn.textContent = 'Use'; btn.className = 'use'; btn.onclick = () => { selected = av.id; store('flipGuyAvatar', selected); applyDims(); avatarSound(); renderShop(); }; }
     else {
       btn.textContent = `🪙 ${av.price}`;
       if (coins < av.price) { btn.disabled = true; need.textContent = `${av.price - coins} more coins`; }
@@ -950,7 +1100,7 @@ function renderShop() {
         coins -= av.price; store('flipGuyCoins', coins);
         owned.push(av.id); store('flipGuyOwned', JSON.stringify(owned));
         selected = av.id; store('flipGuyAvatar', selected); applyDims();
-        meow(); flash = 0.2; renderShop();
+        avatarSound(); flash = 0.2; renderShop();
       };
     }
     card.append(cv, nm, btn, need); grid.append(card);
@@ -1107,6 +1257,7 @@ function loop(now) {
   alt += (altTarget - alt) * Math.min(1, dt * 1.5);
   bestEl.style.color = alt > 0.6 ? '#fff' : '';
 
+  readMic(now);
   // water slosh (bottle avatar)
   slosh.v += ((guy.angle - slosh.a) * 70 - slosh.v * 5) * dt; slosh.a += slosh.v * dt;
 
@@ -1170,7 +1321,7 @@ function loop(now) {
       ctx.beginPath(); ctx.arc(guy.x, guy.y, Math.max(1, r), 0, Math.PI * 2); ctx.stroke();
       if (inWin) { ctx.fillStyle = 'rgba(47,168,79,0.12)'; ctx.beginPath(); ctx.arc(guy.x, guy.y, flight.R, 0, Math.PI * 2); ctx.fill(); }
     }
-  } else if (guy.state === 'stand' && playing && mode === 'classic') {
+  } else if (guy.state === 'stand' && playing && mode !== 'music') {
     const r = 58 + Math.sin(clock * 5) * 5;
     ctx.strokeStyle = 'rgba(226,112,58,0.6)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
     ctx.beginPath(); ctx.arc(guy.x, guy.y, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
@@ -1216,6 +1367,7 @@ function loop(now) {
     ctx.fillStyle = '#2fa84f'; ctx.fillRect(0, 0, W * k, 5);
   }
 
+  drawVoiceMeter();
   if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 2})`; ctx.fillRect(0, 0, W, H); flash -= dt; }
   requestAnimationFrame(loop);
 }
