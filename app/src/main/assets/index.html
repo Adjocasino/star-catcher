@@ -1409,7 +1409,7 @@ function loop(now) {
     }
     if (f.gas) {
       f.x += f.vx * dt; f.y += f.vy * dt; f.r += 22 * dt;
-      ctx.globalAlpha = Math.min(0.55, f.life * 0.7); ctx.fillStyle = '#9fcf5a';
+      ctx.globalAlpha = Math.min(0.55, f.life * 0.7); ctx.fillStyle = '#8b5a2b';
       ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
       continue;
     }
